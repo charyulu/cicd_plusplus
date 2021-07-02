@@ -1,5 +1,7 @@
 #!/usr/bin/sh
 # Synopsis: This script takes care of creating required AKS cluster and deploy Gitlab
+mkdir -p /Users/sudarsanam/Documents/prasad/cicd_plusplus/workspace
+cd /Users/sudarsanam/Documents/prasad/cicd_plusplus/workspace
 git clone https://gitlab.com/gitlab-org/charts/gitlab.git
 cd ./gitlab
 #CREATE - all required AKS resources created
