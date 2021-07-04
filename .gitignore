@@ -1,3 +1,6 @@
 workspace/
 scripts/*.pem
 scripts/gitlab-azure-ARM-templates/
+scripts/.DS_Store
+.gitignore
+.DS_Store
