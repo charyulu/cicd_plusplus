@@ -3,6 +3,8 @@
 SUBSCRIPTION_NAME="gopal-pay-as-you-go"
 RESOURCE_GROUP_NAME="gs-rg"
 AZURE_LOCATION="westus"
+# Note: If public key isn't available, create one. 
+#       https://git-scm.com/book/en/v2/Git-on-the-Server-Generating-Your-SSH-Public-Key
 PUBLIC_KEY="$(tr -d '\n' < ~/.ssh/id_rsa.pub)"
 # ========= Do not change beyond this point =============
 # Login to Azure and capture ID of the required subscription account
