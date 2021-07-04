@@ -5,50 +5,60 @@ cd /Users/sudarsanam/Documents/prasad/cicd_plusplus/workspace
 git clone https://gitlab.com/gitlab-org/charts/gitlab.git
 cd ./gitlab
 #CREATE - all required AKS resources created
-    ./scripts/aks_bootstrap_script.sh --resource-group gs-rg \
-    --cluster-name aks-gitlab-cluster \
-    --region westus --node-count 2 \
-    --node-vm-size Standard_D4s_v3 \
-    --public-ip-name gitlab-ext-ip \
-    --create-resource-group \
-    --create-public-ip up
+# Simple command:
+./scripts/aks_bootstrap_script.sh --create-resource-group up
+#./scripts/aks_bootstrap_script.sh --resource-group gs-rg \
+#    --cluster-name aks-gitlab-cluster \
+#    --region westus --node-count 2 \
+#    --node-vm-size Standard_D4s_v3 \
+#    --public-ip-name gitlab-ext-ip \
+#    --create-resource-group \
+#    --create-public-ip up
+
+# Check the # of resources on a clean slate environment
+az resource list | jq '. | length'  # Should be 7 items
 
 # To connect to cluster
-./scripts/aks_bootstrap_script.sh --resource-group gs-rg --cluster-name aks-gitlab-cluster -f ~/.kube/config creds
-
-#TO DELETE - all AKS resources created
-./scripts/aks_bootstrap_script.sh --resource-group gs-rg \
---cluster-name aks-gitlab-cluster \
---delete-resource-group down
+./scripts/aks_bootstrap_script.sh -f ~/.kube/config creds
+#./scripts/aks_bootstrap_script.sh --resource-group gs-rg --cluster-name aks-gitlab-cluster -f ~/.kube/config creds
 
 # Deploy Gitlab
 # NOTE: Get Public IP address from Ext IP resource created as part of cluster creation.
 helm repo add gitlab https://charts.gitlab.io/
 helm repo update
-helm upgrade --install gitlab gitlab/gitlab \
-  --timeout 600s \
-  --set global.hosts.domain=example.com \
-  --set global.hosts.externalIP=104.209.40.146 \
+helm install gitlab gitlab/gitlab \
+  --set global.hosts.domain=charyulu.bng \
   --set certmanager-issuer.email=me@example.com
 
-# Output of helm install command
-#Release "gitlab" does not exist. Installing it now.
-#NAME: gitlab
-#LAST DEPLOYED: Thu Jul  1 21:29:24 2021
-#NAMESPACE: default
-#STATUS: deployed
-#REVISION: 1
-#NOTES:
-#NOTICE: The minimum required version of PostgreSQL is now 12. See https://gitlab.com/gitlab-org/charts/gitlab/-/blob/master/doc/installation/upgrade.md for more details.
+#helm upgrade --install gitlab gitlab/gitlab \
+#  --timeout 600s \
+#  --set global.hosts.domain=charyulu.com \
+#  --set global.hosts.externalIP=20.81.120.227 \
+#  --set certmanager-issuer.email=me@charyulu.com \
+#  --set gitlab-runner.runners.privilegd=true \
+#  --set certmanager.rbac.create=false \
+#  --set nginx-ingress.rbac.createRole=false \
+#  --set prometheus.rbac.create=false \
+#  --set gitlab-runner.rbac.create=false
 
-#NOTICE: You've installed GitLab Runner without the ability to use 'docker in docker'.
-#The GitLab Runner chart (gitlab/gitlab-runner) is deployed without the `privileged` flag by default for security purposes. This can be changed by setting `gitlab-runner.runners.privileged` to `true`. Before doing so, please read the GitLab Runner chart's documentation on why we
-#chose not to enable this by default. See https://docs.gitlab.com/runner/install/kubernetes.html#running-docker-in-docker-containers-with-gitlab-runners
+# Retrieve IP addresses
+kubectl get ingress -lrelease=gitlab
 
-#Help us improve the installation experience, let us know how we did with a 1 minute survey:
-#https://gitlab.fra1.qualtrics.com/jfe/form/SV_6kVqZANThUQ1bZb?installation=helm&release=14-0
+# Create DNS Entries to Public IP source
 
+# Collect the password to sign in as 'root'
 kubectl get secret gitlab-gitlab-initial-root-password -ojsonpath='{.data.password}' | base64 --decode ; echo
 
 # Uninstall Gitlab
 helm uninstall gitlab
+
+#TO CLEAN-UP - all AKS resources created
+./scripts/aks_bootstrap_script.sh --delete-resource-group down
+#./scripts/aks_bootstrap_script.sh --resource-group gs-rg \
+#--cluster-name aks-gitlab-cluster \
+#--delete-resource-group down
+
+# To delete Resource Groups:
+az group list | jq '.[].name'
+az group delete -n <Resource group Name> -y --no-wait
+az group list | jq '.[] | [.name, .properties.provisioningState]'

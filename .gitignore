@@ -1,0 +1,3 @@
+workspace/
+scripts/*.pem
+scripts/gitlab-azure-ARM-templates/
