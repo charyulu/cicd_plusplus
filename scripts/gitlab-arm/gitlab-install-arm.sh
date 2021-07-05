@@ -20,6 +20,7 @@ az account set --subscription $SUBSCRIPTION_ID
 az configure --defaults group=$RESOURCE_GROUP_NAME
 az group create -l $AZURE_LOCATION -n $RESOURCE_GROUP_NAME
 # Trigger deployment on the required Resource group
+echo -e "\n Gitlab deployment is in progress...\n"
 templateFile="template.json"
 ParameterFile="parameters.json"
 today=$(date +"%d-%b-%Y")
@@ -29,6 +30,9 @@ az deployment group create \
  --template-file $templateFile \
  --parameters $ParameterFile location=${AZURE_LOCATION} adminUsername=${GITLAB_VM_ADMIN_USER} adminPublicKey="${PUBLIC_KEY}" 
 # Check deployment status
+# Wait to settle down
+echo -e "\n Cooling down...\n\n";sleep 30
+echo -e "\n Gitlab configuration is in progress...\n"
 PROVISION_STATUS=$(az deployment group show -g $RESOURCE_GROUP_NAME -n $DeploymentName | jq -r '.properties.provisioningState')
 DEPLOY_STATUS=$(az deployment group show -g $RESOURCE_GROUP_NAME -n $DeploymentName | jq -r '.properties.error.code')
 if [[ $PROVISION_STATUS == "Failed" ]];then
@@ -41,6 +45,8 @@ echo -e "Here are the DNS and Public IP details: \n"
 echo $(az network public-ip update -g ${RESOURCE_GROUP_NAME} -n ${GITLAB_PUBLIC_IP_RESOURCE_NAME} --dns-name ${GITLAB_PUB_IP_DNS_PREFIX} --allocation-method Static) | jq -r '[.dnsSettings, .ipAddress]'
 
 # ======= Start - Edit files on the VM ========
+# Cleanup the host name from ~/.ssh/known_hosts file to get rid of spoofing error.
+ssh-keygen -R ${GITLAB_PUB_IP_DNS_PREFIX}.${AZURE_LOCATION}.cloudapp.azure.com
 # This is to change the Gitlab externla URL, turn off nginx setting to avoid picking up wronf certs.
 ssh -o StrictHostKeyChecking=no ${GITLAB_VM_ADMIN_USER}@${GITLAB_PUB_IP_DNS_PREFIX}.${AZURE_LOCATION}.cloudapp.azure.com 'sudo sed -i "/^external_url.*$/ s/^/#/" /etc/gitlab/gitlab.rb'
 EXTERNAL_URL="external_url \'https://${GITLAB_PUB_IP_DNS_PREFIX}.${AZURE_LOCATION}.cloudapp.azure.com\'"
@@ -50,6 +56,7 @@ ssh ${GITLAB_VM_ADMIN_USER}@${GITLAB_PUB_IP_DNS_PREFIX}.${AZURE_LOCATION}.clouda
 ssh ${GITLAB_VM_ADMIN_USER}@${GITLAB_PUB_IP_DNS_PREFIX}.${AZURE_LOCATION}.cloudapp.azure.com 'sudo sed -i "/^nginx.*ssl_certificate.*$/ s/^/#/" /etc/gitlab/gitlab.rb'
 # ======= End - Edit files on the VM ========
 # Re-configure Gitlab to take updated changes done above.
+echo -e "\n Gitlab restart post configursation is in progress...\n"
 ssh ${GITLAB_VM_ADMIN_USER}@${GITLAB_PUB_IP_DNS_PREFIX}.${AZURE_LOCATION}.cloudapp.azure.com 'sudo gitlab-ctl reconfigure'
 
 # Get Password of Gitlab from Bitnami log: https://docs.bitnami.com/azure/faq/get-started/find-credentials/
