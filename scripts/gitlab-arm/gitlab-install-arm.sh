@@ -47,12 +47,24 @@ echo $(az network public-ip update -g ${RESOURCE_GROUP_NAME} -n ${GITLAB_PUBLIC_
 # ======= Start - Edit files on the VM ========
 # Cleanup the host name from ~/.ssh/known_hosts file to get rid of spoofing error.
 ssh-keygen -R ${GITLAB_PUB_IP_DNS_PREFIX}.${AZURE_LOCATION}.cloudapp.azure.com
-# This is to change the Gitlab external URL, turn off nginx setting to avoid picking up wronf certs.
-# Replace external_url setting inline with DNS name
-ssh -o StrictHostKeyChecking=no ${GITLAB_VM_ADMIN_USER}@${GITLAB_PUB_IP_DNS_PREFIX}.${AZURE_LOCATION}.cloudapp.azure.com 'sudo sed -i "/^external_url.*$/c\external_url \"https://gitlab-gs-rg.westus.cloudapp.azure.com\"" /etc/gitlab/gitlab.rb'
-ssh ${GITLAB_VM_ADMIN_USER}@${GITLAB_PUB_IP_DNS_PREFIX}.${AZURE_LOCATION}.cloudapp.azure.com 'sudo sed -i "/^nginx.*redirect_http_to_https.*$/ s/^/#/" /etc/gitlab/gitlab.rb'
-ssh ${GITLAB_VM_ADMIN_USER}@${GITLAB_PUB_IP_DNS_PREFIX}.${AZURE_LOCATION}.cloudapp.azure.com 'sudo sed -i "/^nginx.*ssl_certificate.*$/ s/^/#/" /etc/gitlab/gitlab.rb'
+# ====================================================================================================
+# The Below Steps are not working. Currently they were left as manual changes. Will be revisited later
+# ====================================================================================================
+# The below steps are to change the Gitlab external URL, turn off nginx setting to avoid picking up wrong certs. Below is the sequence 
+#       Copy /etc/gitlab/gitlab.rb to ~/ on VM,
+#       Make changes (Replace external_url setting with DNS name
+#       Turn off nginix cert settings to avoid picking incorrect certs
+#       copy back updated file to /etc/gitlab/gitlab.rb on VM
+#ssh -o StrictHostKeyChecking=no ${GITLAB_VM_ADMIN_USER}@${GITLAB_PUB_IP_DNS_PREFIX}.${AZURE_LOCATION}.cloudapp.azure.com \
+#'sudo cp /etc/gitlab/gitlab.rb ~/.; sudo chmod 666 ~/gitlab.rb'
+#ssh ${GITLAB_VM_ADMIN_USER}@${GITLAB_PUB_IP_DNS_PREFIX}.${AZURE_LOCATION}.cloudapp.azure.com \
+#"sed -i 's/127.0.0.1/${GITLAB_PUB_IP_DNS_PREFIX}.${AZURE_LOCATION}.cloudapp.azure.com/g; /^nginx.*redirect_http_to_https.*$/ s/^/#/; /^nginx.*ssl_certificate.*$/ s/^/#/' ~/gitlab.rb"
+#ssh ${GITLAB_VM_ADMIN_USER}@${GITLAB_PUB_IP_DNS_PREFIX}.${AZURE_LOCATION}.cloudapp.azure.com 'sudo cp ~/gitlab.rb /etc/gitlab/gitlab.rb'
+echo -e "\n ssh ${GITLAB_VM_ADMIN_USER}@${GITLAB_PUB_IP_DNS_PREFIX}.${AZURE_LOCATION}.cloudapp.azure.com \n Make changes to /etc/gitlab/gitlab.rb file and press any key to proceed...\n";read
+# ======= End - Edit files on the VM ========
 echo -e "\n Gitlab reconfigure is in progress...\n"
+#echo -e "\n Connect to: ssh ${GITLAB_VM_ADMIN_USER}@${GITLAB_PUB_IP_DNS_PREFIX}.${AZURE_LOCATION}.cloudapp.azure.com \n Update file: /etc/gitlab/gitlab.rb\n NOTE: external_url https://gitlab-gs-rg.westus.cloudapp.azure.com" 
+#echo -e "\n Press any key to proceed...";read
 ssh ${GITLAB_VM_ADMIN_USER}@${GITLAB_PUB_IP_DNS_PREFIX}.${AZURE_LOCATION}.cloudapp.azure.com 'sudo gitlab-ctl reconfigure'
 
 # Get Password of Gitlab from Bitnami log: https://docs.bitnami.com/azure/faq/get-started/find-credentials/
