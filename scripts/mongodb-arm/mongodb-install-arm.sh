@@ -49,6 +49,7 @@ echo -e "\n Gitlab configuration is in progress...\n"
 # Add prefix to Gitlab Public IP DNS name.
 echo -e "Here are the DNS and Public IP details: \n"
 echo $(az network public-ip update -g ${RESOURCE_GROUP_NAME} -n ${MONGO_PUBLIC_IP_RESOURCE_NAME} --dns-name ${MONGO_PUB_IP_DNS_PREFIX} --allocation-method Static) | jq -r '[.dnsSettings, .ipAddress]'
+# Open DB port and configure Mongo DB
 echo -e "Opening Mongo DB Port - Inbound to VM: \n"
 az vm open-port -g ${RESOURCE_GROUP_NAME} -n ${MONGO_VM_NAME} --port 27017 --priority 200
 echo -e "Configuring Mango DB and restarting the deamon.\n"
