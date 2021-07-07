@@ -34,13 +34,13 @@ imagePullPolicy: IfNotPresent
 ## The GitLab Server URL (with protocol) that want to register the runner against
 ## ref: https://docs.gitlab.com/runner/commands/README.html#gitlab-runner-register
 ##
-gitlabUrl: https://gitlab-bit-rg-070620211154.westus.cloudapp.azure.com/
+gitlabUrl: https://gitlab-bit-rg-070620212015.westus.cloudapp.azure.com/
 
 ## The Registration Token for adding new Runners to the GitLab Server. This must
 ## be retrieved from your GitLab Instance.
 ## ref: https://docs.gitlab.com/ce/ci/runners/README.html
 ##
-runnerRegistrationToken: "mY9qz86mvnPShgorp9Pj"
+runnerRegistrationToken: "ZnFnW6uKLRFMULNjjJjS"
 
 ## The Runner Token for adding new Runners to the GitLab Server. This must
 ## be retrieved from your GitLab Instance. It is token of already registered runner.
