@@ -13,7 +13,7 @@ AKS_NAMESPACE="default"
 AZURE_REGION="westus"
 PUBLIC_KEY="$(tr -d '\n' < ~/.ssh/id_rsa.pub)"
 MONGO_PUB_IP_DNS_PREFIX="${RESOURCE_GROUP_NAME}"
-MONGO_PUBLIC_IP_RESOURCE_NAME
+MONGO_PUBLIC_IP_RESOURCE_NAME="mongodb-ip"
 # ========= Do not change beyond this point =============
 # Login to Azure and capture ID of the required subscription account
 SUBSCRIPTION_ID=$(az login | jq -r --arg SUBNAME "$SUBSCRIPTION_NAME" '.[] | select( .name == $SUBNAME) | .id')
@@ -31,13 +31,11 @@ node_resource_group=$(az aks create \
     --name $AKS_CLUSTER \
     --node-count $AKS_NODE_COUNT \
     --node-vm-size $AKS_NODE_VM_SIZE \
+    --node-public-ip-prefix-id ${MONGO_PUB_IP_DNS_PREFIX} \
     --generate-ssh-keys | \
     jq -r '.nodeResourceGroup')
 
 echo "The node resource group created by AKS is: $node_resource_group"
-# Add prefix to Gitlab Public IP DNS name.
-echo -e "Here are the DNS and Public IP details: \n"
-echo $(az network public-ip update -g ${RESOURCE_GROUP_NAME} -n ${MONGO_PUBLIC_IP_RESOURCE_NAME} --dns-name ${MONGO_PUB_IP_DNS_PREFIX} --allocation-method Static) | jq -r '[.dnsSettings, .ipAddress]'
 # Install Kubectl, if not available
 if which kubectl |& egrep -q ".*no kubectl.*";then
     echo -e "\n kubectl is unavailable. Installing..."
