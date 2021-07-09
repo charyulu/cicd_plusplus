@@ -20,7 +20,7 @@ terraform apply -auto-approve -json
 terraform show
 terraform state list
 # Step - 5b: Check the files (tfstate, etc. ) created by terraform
-ls -alR 
-echo -e "Press any key to destroy the Infrastruces...";read
+#ls -alR 
+#echo -e "Press any key to destroy the Infrastructure...";read
 # Step -6: Destroy nginx container
-terraform destroy
+#terraform destroy
