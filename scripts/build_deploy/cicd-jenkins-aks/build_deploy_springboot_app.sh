@@ -35,45 +35,43 @@ export KUBE_CONFIG_FILE="~/.kube/config"
 # Reference: https://github.com/Azure-Samples/azure-voting-app-redis/tree/master/jenkins-tutorial
 
 function install_jenkins() {
-    if [ -f $KUBE_CONFIG_FILE ]
-then
+    if [ -f $KUBE_CONFIG_FILE ]; then
+        # Create a resource group.
+        az group create --name $RESOURCE_GROUP_NAME --location westeurope
 
-    # Create a resource group.
-    az group create --name $RESOURCE_GROUP_NAME --location westeurope
+        # Create a new virtual machine, this creates SSH keys if not present.
+        az vm create --resource-group $RESOURCE_GROUP_NAME --name $JENKINS_VM_NAME --admin-username $JENKINS_VM_ADMIN_USER --image UbuntuLTS --generate-ssh-keys
 
-    # Create a new virtual machine, this creates SSH keys if not present.
-    az vm create --resource-group $RESOURCE_GROUP_NAME --name $JENKINS_VM_NAME --admin-username $JENKINS_VM_ADMIN_USER --image UbuntuLTS --generate-ssh-keys
+        # Open port 80 to allow web traffic to host.
+        az vm open-port --port 80 --resource-group $RESOURCE_GROUP_NAME --name $JENKINS_VM_NAME  --priority 101
 
-    # Open port 80 to allow web traffic to host.
-    az vm open-port --port 80 --resource-group $RESOURCE_GROUP_NAME --name $JENKINS_VM_NAME  --priority 101
+        # Open port 22 to allow ssh traffic to host.
+        az vm open-port --port 22 --resource-group $RESOURCE_GROUP_NAME --name $JENKINS_VM_NAME --priority 102
 
-    # Open port 22 to allow ssh traffic to host.
-    az vm open-port --port 22 --resource-group $RESOURCE_GROUP_NAME --name $JENKINS_VM_NAME --priority 102
+        # Open port 8080 to allow web traffic to host.
+        az vm open-port --port 8080 --resource-group $RESOURCE_GROUP_NAME --name $JENKINS_VM_NAME --priority 103
 
-    # Open port 8080 to allow web traffic to host.
-    az vm open-port --port 8080 --resource-group $RESOURCE_GROUP_NAME --name $JENKINS_VM_NAME --priority 103
+        # Use CustomScript extension to install NGINX.
+        # Reference: https://docs.microsoft.com/en-us/azure/virtual-machines/extensions/custom-script-linux
+        az vm extension set --publisher Microsoft.Azure.Extensions --version 2.0 --name CustomScript --vm-name $JENKINS_VM_NAME --resource-group $RESOURCE_GROUP_NAME --settings '{"fileUris": ["https://raw.githubusercontent.com/charyulu/cicd_plusplus/main/scripts/build_deploy/cicd-jenkins-aks/config-jenkins.sh?token=ACOJYOMSNXFW5CFGAOHGZNDA5IJLE"],"commandToExecute": "./config-jenkins.sh"}'
 
-    # Use CustomScript extension to install NGINX.
-    # Reference: https://docs.microsoft.com/en-us/azure/virtual-machines/extensions/custom-script-linux
-    az vm extension set --publisher Microsoft.Azure.Extensions --version 2.0 --name CustomScript --vm-name $JENKINS_VM_NAME --resource-group $RESOURCE_GROUP_NAME --settings '{"fileUris": ["https://raw.githubusercontent.com/charyulu/cicd_plusplus/main/scripts/build_deploy/cicd-jenkins-aks/config-jenkins.sh?token=ACOJYOMSNXFW5CFGAOHGZNDA5IJLE"],"commandToExecute": "./config-jenkins.sh"}'
+        # Get public IP
+        JENKINS_VM_PUBLIC_IP=$(az vm list-ip-addresses --resource-group $RESOURCE_GROUP_NAME --name $JENKINS_VM_NAME --query [0].virtualMachine.network.publicIpAddresses[0].ipAddress -o tsv)
+        echo "\n JENKINS_VM_PUBLIC_IP = $JENKINS_VM_PUBLIC_IP"
+        # Copy Kube config file to Jenkins
+        ssh -o "StrictHostKeyChecking no" $JENKINS_VM_ADMIN_USER@$JENKINS_VM_PUBLIC_IP sudo chmod 777 /var/lib/jenkins
+        yes | scp $KUBE_CONFIG_FILE $JENKINS_VM_ADMIN_USER@$JENKINS_VM_PUBLIC_IP:/var/lib/jenkins/config
+        ssh -o "StrictHostKeyChecking no" $JENKINS_VM_ADMIN_USER@$JENKINS_VM_PUBLIC_IP sudo chmod 777 /var/lib/jenkins/config
 
-    # Get public IP
-    JENKINS_VM_PUBLIC_IP=$(az vm list-ip-addresses --resource-group $RESOURCE_GROUP_NAME --name $JENKINS_VM_NAME --query [0].virtualMachine.network.publicIpAddresses[0].ipAddress -o tsv)
-    echo "\n JENKINS_VM_PUBLIC_IP = $JENKINS_VM_PUBLIC_IP"
-    # Copy Kube config file to Jenkins
-    ssh -o "StrictHostKeyChecking no" $JENKINS_VM_ADMIN_USER@$JENKINS_VM_PUBLIC_IP sudo chmod 777 /var/lib/jenkins
-    yes | scp $KUBE_CONFIG_FILE $JENKINS_VM_ADMIN_USER@$JENKINS_VM_PUBLIC_IP:/var/lib/jenkins/config
-    ssh -o "StrictHostKeyChecking no" $JENKINS_VM_ADMIN_USER@$JENKINS_VM_PUBLIC_IP sudo chmod 777 /var/lib/jenkins/config
-
-    # Get Jenkins Unlock Key
-    JENKINS_URL="http://$JENKINS_VM_PUBLIC_IP:8080"
-    echo "Open Jenkins in browser at: $JENKINS_URL"
-    echo "Enter the following to Unlock Jenkins:"
-    ssh -o "StrictHostKeyChecking no" $JENKINS_VM_ADMIN_USER@$JENKINS_VM_PUBLIC_IP sudo "cat /var/lib/jenkins/secrets/initialAdminPassword"
-    echo "\n\n Take above said steps and press any key to continue...";read
-else
-    echo "Kubernetes configuration / authentication file not found. Run az aks get-credentials to download this file."
-fi
+        # Get Jenkins Unlock Key
+        JENKINS_URL="http://$JENKINS_VM_PUBLIC_IP:8080"
+        echo "Open Jenkins in browser at: $JENKINS_URL"
+        echo "Enter the following to Unlock Jenkins:"
+        ssh -o "StrictHostKeyChecking no" $JENKINS_VM_ADMIN_USER@$JENKINS_VM_PUBLIC_IP sudo "cat /var/lib/jenkins/secrets/initialAdminPassword"
+        echo "\n\n Take above said steps and press any key to continue...";read
+    else
+        echo "Kubernetes configuration / authentication file not found. Run az aks get-credentials to download this file."
+    fi
 }
 # Fork the project https://github.com/Azure-Samples/azure-voting-app-redis into personal github account
 rm -rf azure-voting-app-redis
