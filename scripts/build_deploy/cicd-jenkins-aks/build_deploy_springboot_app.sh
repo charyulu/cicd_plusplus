@@ -17,8 +17,7 @@ export AKS_NODE_VM_SIZE="Standard_D4s_v3"
 export AKS_DNS_NAME_PREFIX="cicd-jenk-k8s"
 export AKS_NAMESPACE="default"
 export AZURE_REGION="westus"
-PUBLIC_KEY="$(tr -d '\n' < ~/.ssh/id_rsa.pub)"
-export PUBLIC_KEY
+PUBLIC_KEY="$(tr -d '\n' < ~/.ssh/id_rsa.pub)";export PUBLIC_KEY
 export PROJ_BASE_DIR="/Users/sudarsanam/Documents/prasad/cicd_plusplus/scripts/build_deploy/cicd-jenkins-aks"
 export IMAGE_NAME="azure-vote-front"
 export POD_NAME="${IMAGE_NAME}"
@@ -27,8 +26,7 @@ export JENKINS_VM_ADMIN_USER="charyulu"  # NOTE: Add same value in
 # Give absolute path to .kube/config
 export KUBE_CONFIG_FILE="/Users/sudarsanam/.kube/config"
 # Login to Azure and capture ID of the required subscription account
-SUBSCRIPTION_ID=$(az login | jq -r --arg SUBNAME "$SUBSCRIPTION_NAME" '.[] | select( .name == $SUBNAME) | .id')
-export SUBSCRIPTION_ID
+SUBSCRIPTION_ID=$(az login | jq -r --arg SUBNAME "$SUBSCRIPTION_NAME" '.[] | select( .name == $SUBNAME) | .id');export SUBSCRIPTION_ID
 
 # Prerequisites:
 # Azure container registry (ACR) credential helper. (https://github.com/Azure/acr-docker-credential-helper)
@@ -45,7 +43,10 @@ function bootstrap_jenkins_vm() {
         # Check & Create a resource group.
         QUERY_OUTPUT=$(az group show -n "$RESOURCE_GROUP_NAME" --subscription $SUBSCRIPTION_NAME --query name -o tsv)
         if [[ "$QUERY_OUTPUT" != "$RESOURCE_GROUP_NAME" ]];then
+            echo "Resource Group: $RESOURCE_GROUP_NAME not found... Creating it"
             az group create --name "$RESOURCE_GROUP_NAME" --location $AZURE_REGION
+        else
+            echo "Resource Group: $RESOURCE_GROUP_NAME already existing."
         fi
         # Create a new virtual machine, this creates SSH keys if not present ans install Jenkins using VM init script
         # Reference: https://docs.microsoft.com/en-us/azure/developer/jenkins/configure-on-linux-vm
@@ -89,14 +90,14 @@ git clone git@github.com:charyulu/azure-voting-app-redis.git
 cd azure-voting-app-redis || exit
 # Download, create and start Docker images of application Front end and backend
 docker-compose up -d
-# Login to Azure and capture ID of the required subscription account
-SUBSCRIPTION_ID=$(az login | jq -r --arg SUBNAME "$SUBSCRIPTION_NAME" '.[] | select( .name == $SUBNAME) | .id')
 az account set --subscription "$SUBSCRIPTION_ID"
 # check & Create Resource group
 QUERY_OUTPUT=$(az group show -n "$RESOURCE_GROUP_NAME" --subscription $SUBSCRIPTION_NAME --query name -o tsv)
 if [[ "$QUERY_OUTPUT" != "$RESOURCE_GROUP_NAME" ]];then
-    echo "Creating resource group: $RESOURCE_GROUP_NAME"
+    echo "Resource Group: $RESOURCE_GROUP_NAME not found... Creating it"
     az group create --name "$RESOURCE_GROUP_NAME" --location $AZURE_REGION
+else
+    echo "Resource Group: $RESOURCE_GROUP_NAME already existing."
 fi
 # Create private azure container registery
 az acr create --resource-group "$RESOURCE_GROUP_NAME" --location $AZURE_REGION \
