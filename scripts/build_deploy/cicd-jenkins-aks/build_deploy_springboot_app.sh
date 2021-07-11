@@ -17,7 +17,8 @@ export AKS_NODE_VM_SIZE="Standard_D4s_v3"
 export AKS_DNS_NAME_PREFIX="cicd-jenk-k8s"
 export AKS_NAMESPACE="default"
 export AZURE_REGION="westus"
-export PUBLIC_KEY="$(tr -d '\n' < ~/.ssh/id_rsa.pub)"
+PUBLIC_KEY="$(tr -d '\n' < ~/.ssh/id_rsa.pub)"
+export PUBLIC_KEY
 export PROJ_BASE_DIR="/Users/sudarsanam/Documents/prasad/cicd_plusplus/scripts/build_deploy/cicd-jenkins-aks"
 export IMAGE_NAME="azure-vote-front"
 export POD_NAME="${IMAGE_NAME}"
@@ -25,6 +26,9 @@ export JENKINS_VM_NAME="cicd-jenk-vm"
 export JENKINS_VM_ADMIN_USER="charyulu"  # NOTE: Add same value in 
 # Give absolute path to .kube/config
 export KUBE_CONFIG_FILE="/Users/sudarsanam/.kube/config"
+# Login to Azure and capture ID of the required subscription account
+SUBSCRIPTION_ID=$(az login | jq -r --arg SUBNAME "$SUBSCRIPTION_NAME" '.[] | select( .name == $SUBNAME) | .id')
+export SUBSCRIPTION_ID
 
 # Prerequisites:
 # Azure container registry (ACR) credential helper. (https://github.com/Azure/acr-docker-credential-helper)
@@ -37,58 +41,65 @@ export KUBE_CONFIG_FILE="/Users/sudarsanam/.kube/config"
 
 function bootstrap_jenkins_vm() {
     if [ -f $KUBE_CONFIG_FILE ]; then
-        # Create a resource group.
-        az group create --name $RESOURCE_GROUP_NAME --location $AZURE_REGION
 
-        # Create a new virtual machine, this creates SSH keys if not present ans install Jenkins
+        # Check & Create a resource group.
+        QUERY_OUTPUT=$(az group show -n "$RESOURCE_GROUP_NAME" --subscription $SUBSCRIPTION_NAME --query name -o tsv)
+        if [[ "$QUERY_OUTPUT" != "$RESOURCE_GROUP_NAME" ]];then
+            az group create --name "$RESOURCE_GROUP_NAME" --location $AZURE_REGION
+        fi
+        # Create a new virtual machine, this creates SSH keys if not present ans install Jenkins using VM init script
         # Reference: https://docs.microsoft.com/en-us/azure/developer/jenkins/configure-on-linux-vm
-        az vm create --resource-group $RESOURCE_GROUP_NAME --name $JENKINS_VM_NAME --admin-username $JENKINS_VM_ADMIN_USER --image UbuntuLTS --generate-ssh-keys --custom-data ./bootstrap_jenkins_vm.txt
+        az vm create --resource-group "$RESOURCE_GROUP_NAME" --name $JENKINS_VM_NAME --admin-username $JENKINS_VM_ADMIN_USER --image UbuntuLTS --generate-ssh-keys --custom-data ./bootstrap_jenkins_vm.txt
+        echo -e "\n Waiting on VM to start Jenkins...";sleep 30
 
         # Open port 80 to allow web traffic to host.
-        az vm open-port --port 80 --resource-group $RESOURCE_GROUP_NAME --name $JENKINS_VM_NAME  --priority 101
+        az vm open-port --port 80 --resource-group "$RESOURCE_GROUP_NAME" --name $JENKINS_VM_NAME  --priority 101
 
         # Open port 22 to allow ssh traffic to host.
-        az vm open-port --port 22 --resource-group $RESOURCE_GROUP_NAME --name $JENKINS_VM_NAME --priority 102
+        az vm open-port --port 22 --resource-group "$RESOURCE_GROUP_NAME" --name $JENKINS_VM_NAME --priority 102
 
         # Open port 8080 to allow web traffic to host.
-        az vm open-port --port 8080 --resource-group $RESOURCE_GROUP_NAME --name $JENKINS_VM_NAME --priority 103
+        az vm open-port --port 8080 --resource-group "$RESOURCE_GROUP_NAME" --name $JENKINS_VM_NAME --priority 103
 
         # Use CustomScript extension to install NGINX.
         # Reference: https://docs.microsoft.com/en-us/azure/virtual-machines/extensions/custom-script-linux
         #az vm extension set --publisher Microsoft.Azure.Extensions --version 2.0 --name CustomScript --vm-name $JENKINS_VM_NAME --resource-group $RESOURCE_GROUP_NAME --settings '{"fileUris": ["https://raw.githubusercontent.com/charyulu/cicd_plusplus/main/scripts/build_deploy/cicd-jenkins-aks/config-jenkins.sh"],"commandToExecute": "./config-jenkins.sh"}'
 
         # Get public IP
-        JENKINS_VM_PUBLIC_IP=$(az vm list-ip-addresses --resource-group $RESOURCE_GROUP_NAME --name $JENKINS_VM_NAME --query [0].virtualMachine.network.publicIpAddresses[0].ipAddress -o tsv)
-        echo "\n JENKINS_VM_PUBLIC_IP = $JENKINS_VM_PUBLIC_IP"
+        JENKINS_VM_PUBLIC_IP=$(az vm list-ip-addresses --resource-group "$RESOURCE_GROUP_NAME" --name $JENKINS_VM_NAME --query [0].virtualMachine.network.publicIpAddresses[0].ipAddress -o tsv)
+        echo -e "\n JENKINS_VM_PUBLIC_IP = $JENKINS_VM_PUBLIC_IP"
         # Copy Kube config file to Jenkins
-        ssh -o "StrictHostKeyChecking no" $JENKINS_VM_ADMIN_USER@$JENKINS_VM_PUBLIC_IP sudo chmod 777 /var/lib/jenkins
-        yes | scp $KUBE_CONFIG_FILE $JENKINS_VM_ADMIN_USER@$JENKINS_VM_PUBLIC_IP:/var/lib/jenkins/config
-        ssh -o "StrictHostKeyChecking no" $JENKINS_VM_ADMIN_USER@$JENKINS_VM_PUBLIC_IP sudo chmod 777 /var/lib/jenkins/config
+        ssh -o "StrictHostKeyChecking no" $JENKINS_VM_ADMIN_USER@"$JENKINS_VM_PUBLIC_IP" sudo chmod 777 /var/lib/jenkins
+        yes | scp $KUBE_CONFIG_FILE $JENKINS_VM_ADMIN_USER@"$JENKINS_VM_PUBLIC_IP":/var/lib/jenkins/config
+        ssh -o "StrictHostKeyChecking no" $JENKINS_VM_ADMIN_USER@"$JENKINS_VM_PUBLIC_IP" sudo chmod 777 /var/lib/jenkins/config
 
         # Get Jenkins Unlock Key
         JENKINS_URL="http://$JENKINS_VM_PUBLIC_IP:8080"
-        echo "Open Jenkins in browser at: $JENKINS_URL"
-        echo "Enter the following to Unlock Jenkins:"
-        ssh -o "StrictHostKeyChecking no" $JENKINS_VM_ADMIN_USER@$JENKINS_VM_PUBLIC_IP sudo cat /var/lib/jenkins/secrets/initialAdminPassword
-        echo "\n\n Take above said steps and press any key to continue...";read
+        echo -e "Open Jenkins in browser at: $JENKINS_URL"
+        echo -e "Enter the following to Unlock Jenkins:"
+        ssh -o "StrictHostKeyChecking no" $JENKINS_VM_ADMIN_USER@"$JENKINS_VM_PUBLIC_IP" sudo cat /var/lib/jenkins/secrets/initialAdminPassword
+        echo -e "\n\n Take above said steps and press any key to continue...";read -r
     else
-        echo "Kubernetes configuration / authentication file not found. Run az aks get-credentials to download this file."
+        echo -e "\nKubernetes configuration / authentication file not found. Run az aks get-credentials to download this file."
     fi
 }
 # Fork the project https://github.com/Azure-Samples/azure-voting-app-redis into personal github account
 rm -rf azure-voting-app-redis
 git clone git@github.com:charyulu/azure-voting-app-redis.git
-cd azure-voting-app-redis
+cd azure-voting-app-redis || exit
 # Download, create and start Docker images of application Front end and backend
 docker-compose up -d
 # Login to Azure and capture ID of the required subscription account
 SUBSCRIPTION_ID=$(az login | jq -r --arg SUBNAME "$SUBSCRIPTION_NAME" '.[] | select( .name == $SUBNAME) | .id')
-az account set --subscription $SUBSCRIPTION_ID
-# Create Resource group
-echo "Creating resource group: $RESOURCE_GROUP_NAME"
-az group create -n $RESOURCE_GROUP_NAME -l $AZURE_REGION
+az account set --subscription "$SUBSCRIPTION_ID"
+# check & Create Resource group
+QUERY_OUTPUT=$(az group show -n "$RESOURCE_GROUP_NAME" --subscription $SUBSCRIPTION_NAME --query name -o tsv)
+if [[ "$QUERY_OUTPUT" != "$RESOURCE_GROUP_NAME" ]];then
+    echo "Creating resource group: $RESOURCE_GROUP_NAME"
+    az group create --name "$RESOURCE_GROUP_NAME" --location $AZURE_REGION
+fi
 # Create private azure container registery
-az acr create --resource-group $RESOURCE_GROUP_NAME --location $AZURE_REGION \
+az acr create --resource-group "$RESOURCE_GROUP_NAME" --location $AZURE_REGION \
  --name ${ACR_NAME} --sku Basic
 # set the default name for Azure Container Registry, otherwise you will need to specify the name in "az acr login"
 # IMPORTANT NOTE: The credential created by "az acr login" is valid for 1 hour
@@ -103,7 +114,7 @@ docker push ${ACR_NAME}.azurecr.io/azure-vote-front:v1
 # Create AKS Cluster 
 echo "Creating AKS cluster: ${AKS_CLUSTER} on resource group: $RESOURCE_GROUP_NAME"
 node_resource_group=$(az aks create \
-    --resource-group $RESOURCE_GROUP_NAME \
+    --resource-group "$RESOURCE_GROUP_NAME" \
     --name $AKS_CLUSTER \
     --node-count $AKS_NODE_COUNT \
     --node-vm-size $AKS_NODE_VM_SIZE \
@@ -120,7 +131,7 @@ fi
 echo "The node resource group created by AKS is: $node_resource_group"
 # Run below command to make connection to cluster from desktop and synch-up credentials.
 echo "Downloading config and connecting to Cluster: ${AKS_CLUSTER} on resource group: $RESOURCE_GROUP_NAME"
-az aks get-credentials -g $RESOURCE_GROUP_NAME -n $AKS_CLUSTER
+az aks get-credentials -g "$RESOURCE_GROUP_NAME" -n $AKS_CLUSTER
 
 # Update image URI in kubernetes deployment manifest with ACR created above
 sed -i '' -e "s/mcr.microsoft.com\/azuredocs/${ACR_NAME}.azurecr.io/" ./azure-vote-all-in-one-redis.yaml
@@ -133,9 +144,9 @@ kubectl get service azure-vote-front --watch
 #Expose the application (container) externally
 #kubectl expose pod ${POD_NAME} --type=LoadBalancer --port=80 --target-port=8080
 # Get the External IP of the cluster:
-echo "\n Waiting for POD to come up...";sleep 30
+echo -e "\n Waiting for POD to come up...";sleep 30
 CLUSTER_PUBLIC_IP=$(kubectl get services -o=jsonpath='{.items[*].status.loadBalancer.ingress[0].ip}')
-echo "\n Access application on: http://${CLUSTER_PUBLIC_IP}"
+echo -e "\n Access application on: http://${CLUSTER_PUBLIC_IP}"
 
 # Create VM, install and configure Jenkins
 bootstrap_jenkins_vm
