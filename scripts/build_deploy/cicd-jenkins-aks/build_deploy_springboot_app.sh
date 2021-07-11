@@ -23,7 +23,8 @@ export IMAGE_NAME="azure-vote-front"
 export POD_NAME="${IMAGE_NAME}"
 export JENKINS_VM_NAME="cicd-jenk-vm"
 export JENKINS_VM_ADMIN_USER="charyulu"
-export KUBE_CONFIG_FILE="~/.kube/config"
+# Give absolute path to .kube/config
+export KUBE_CONFIG_FILE="/Users/sudarsanam/.kube/config"
 
 # Prerequisites:
 # Azure container registry (ACR) credential helper. (https://github.com/Azure/acr-docker-credential-helper)
@@ -37,7 +38,7 @@ export KUBE_CONFIG_FILE="~/.kube/config"
 function install_jenkins() {
     if [ -f $KUBE_CONFIG_FILE ]; then
         # Create a resource group.
-        az group create --name $RESOURCE_GROUP_NAME --location westeurope
+        az group create --name $RESOURCE_GROUP_NAME --location $AZURE_REGION
 
         # Create a new virtual machine, this creates SSH keys if not present.
         az vm create --resource-group $RESOURCE_GROUP_NAME --name $JENKINS_VM_NAME --admin-username $JENKINS_VM_ADMIN_USER --image UbuntuLTS --generate-ssh-keys
@@ -53,7 +54,7 @@ function install_jenkins() {
 
         # Use CustomScript extension to install NGINX.
         # Reference: https://docs.microsoft.com/en-us/azure/virtual-machines/extensions/custom-script-linux
-        az vm extension set --publisher Microsoft.Azure.Extensions --version 2.0 --name CustomScript --vm-name $JENKINS_VM_NAME --resource-group $RESOURCE_GROUP_NAME --settings '{"fileUris": ["https://raw.githubusercontent.com/charyulu/cicd_plusplus/main/scripts/build_deploy/cicd-jenkins-aks/config-jenkins.sh?token=ACOJYOMSNXFW5CFGAOHGZNDA5IJLE"],"commandToExecute": "./config-jenkins.sh"}'
+        az vm extension set --publisher Microsoft.Azure.Extensions --version 2.0 --name CustomScript --vm-name $JENKINS_VM_NAME --resource-group $RESOURCE_GROUP_NAME --settings '{"fileUris": ["https://raw.githubusercontent.com/charyulu/cicd_plusplus/main/scripts/build_deploy/cicd-jenkins-aks/config-jenkins.sh"],"commandToExecute": "./config-jenkins.sh"}'
 
         # Get public IP
         JENKINS_VM_PUBLIC_IP=$(az vm list-ip-addresses --resource-group $RESOURCE_GROUP_NAME --name $JENKINS_VM_NAME --query [0].virtualMachine.network.publicIpAddresses[0].ipAddress -o tsv)
