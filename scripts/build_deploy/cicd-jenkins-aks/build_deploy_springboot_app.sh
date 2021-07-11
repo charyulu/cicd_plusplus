@@ -22,7 +22,7 @@ export PROJ_BASE_DIR="/Users/sudarsanam/Documents/prasad/cicd_plusplus/scripts/b
 export IMAGE_NAME="azure-vote-front"
 export POD_NAME="${IMAGE_NAME}"
 export JENKINS_VM_NAME="cicd-jenk-vm"
-export JENKINS_VM_ADMIN_USER="charyulu"
+export JENKINS_VM_ADMIN_USER="charyulu"  # NOTE: Add same value in 
 # Give absolute path to .kube/config
 export KUBE_CONFIG_FILE="/Users/sudarsanam/.kube/config"
 
@@ -35,13 +35,14 @@ export KUBE_CONFIG_FILE="/Users/sudarsanam/.kube/config"
 # Function: Install and deploy Jenkins on VM
 # Reference: https://github.com/Azure-Samples/azure-voting-app-redis/tree/master/jenkins-tutorial
 
-function install_jenkins() {
+function bootstrap_jenkins_vm() {
     if [ -f $KUBE_CONFIG_FILE ]; then
         # Create a resource group.
         az group create --name $RESOURCE_GROUP_NAME --location $AZURE_REGION
 
-        # Create a new virtual machine, this creates SSH keys if not present.
-        az vm create --resource-group $RESOURCE_GROUP_NAME --name $JENKINS_VM_NAME --admin-username $JENKINS_VM_ADMIN_USER --image UbuntuLTS --generate-ssh-keys
+        # Create a new virtual machine, this creates SSH keys if not present ans install Jenkins
+        # Reference: https://docs.microsoft.com/en-us/azure/developer/jenkins/configure-on-linux-vm
+        az vm create --resource-group $RESOURCE_GROUP_NAME --name $JENKINS_VM_NAME --admin-username $JENKINS_VM_ADMIN_USER --image UbuntuLTS --generate-ssh-keys --custom-data ./bootstrap_jenkins_vm.txt
 
         # Open port 80 to allow web traffic to host.
         az vm open-port --port 80 --resource-group $RESOURCE_GROUP_NAME --name $JENKINS_VM_NAME  --priority 101
@@ -54,7 +55,7 @@ function install_jenkins() {
 
         # Use CustomScript extension to install NGINX.
         # Reference: https://docs.microsoft.com/en-us/azure/virtual-machines/extensions/custom-script-linux
-        az vm extension set --publisher Microsoft.Azure.Extensions --version 2.0 --name CustomScript --vm-name $JENKINS_VM_NAME --resource-group $RESOURCE_GROUP_NAME --settings '{"fileUris": ["https://raw.githubusercontent.com/charyulu/cicd_plusplus/main/scripts/build_deploy/cicd-jenkins-aks/config-jenkins.sh"],"commandToExecute": "./config-jenkins.sh"}'
+        #az vm extension set --publisher Microsoft.Azure.Extensions --version 2.0 --name CustomScript --vm-name $JENKINS_VM_NAME --resource-group $RESOURCE_GROUP_NAME --settings '{"fileUris": ["https://raw.githubusercontent.com/charyulu/cicd_plusplus/main/scripts/build_deploy/cicd-jenkins-aks/config-jenkins.sh"],"commandToExecute": "./config-jenkins.sh"}'
 
         # Get public IP
         JENKINS_VM_PUBLIC_IP=$(az vm list-ip-addresses --resource-group $RESOURCE_GROUP_NAME --name $JENKINS_VM_NAME --query [0].virtualMachine.network.publicIpAddresses[0].ipAddress -o tsv)
@@ -68,7 +69,7 @@ function install_jenkins() {
         JENKINS_URL="http://$JENKINS_VM_PUBLIC_IP:8080"
         echo "Open Jenkins in browser at: $JENKINS_URL"
         echo "Enter the following to Unlock Jenkins:"
-        ssh -o "StrictHostKeyChecking no" $JENKINS_VM_ADMIN_USER@$JENKINS_VM_PUBLIC_IP sudo "cat /var/lib/jenkins/secrets/initialAdminPassword"
+        ssh -o "StrictHostKeyChecking no" $JENKINS_VM_ADMIN_USER@$JENKINS_VM_PUBLIC_IP sudo cat /var/lib/jenkins/secrets/initialAdminPassword
         echo "\n\n Take above said steps and press any key to continue...";read
     else
         echo "Kubernetes configuration / authentication file not found. Run az aks get-credentials to download this file."
@@ -135,8 +136,9 @@ kubectl get service azure-vote-front --watch
 echo "\n Waiting for POD to come up...";sleep 30
 CLUSTER_PUBLIC_IP=$(kubectl get services -o=jsonpath='{.items[*].status.loadBalancer.ingress[0].ip}')
 echo "\n Access application on: http://${CLUSTER_PUBLIC_IP}"
+
 # Create VM, install and configure Jenkins
-install_jenkins
+bootstrap_jenkins_vm
 
 #TO CLEAN-UP - all resources created
 #NODE_RG=$(az aks show --name $AKS_CLUSTER --resource-group $RESOURCE_GROUP_NAME | jq -r '.nodeResourceGroup')

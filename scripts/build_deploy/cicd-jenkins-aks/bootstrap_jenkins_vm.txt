@@ -1,0 +1,26 @@
+#cloud-config
+package_upgrade: true
+runcmd:
+  - apt install openjdk-8-jdk -y
+  - wget -qO - https://pkg.jenkins.io/debian-stable/jenkins.io.key | sudo apt-key add -
+  - sh -c 'echo deb https://pkg.jenkins.io/debian-stable binary/ > /etc/apt/sources.list.d/jenkins.list'
+  - apt-get update && apt-get install jenkins -y
+  - service jenkins restart
+  - service jenkins status
+  - cat /var/lib/jenkins/secrets/initialAdminPassword
+  - apt-get install apt-transport-https ca-certificates curl software-properties-common -y
+  - curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
+  - apt-key fingerprint 0EBFCD88
+  - add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
+  - apt-get update && apt-get install docker-ce -y
+  - curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+  - cd /tmp/ && sudo curl -kLO https://storage.googleapis.com/kubernetes-release/release/v1.8.0/bin/linux/amd64/kubectl
+  - chmod +x ./kubectl && sudo mv ./kubectl /usr/local/bin/kubectl
+  - usermod -aG docker jenkins
+  - usermod -aG docker charyulu
+  - touch /var/lib/jenkins/jenkins.install.InstallUtil.lastExecVersion
+  - service jenkins restart;
+  - cp ~/.kube/config /var/lib/jenkins/.kube/
+  - chmod 777 /var/lib/jenkins/
+  - chmod 777 /var/lib/jenkins/config
+
