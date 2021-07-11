@@ -132,7 +132,7 @@ fi
 echo "The node resource group created by AKS is: $node_resource_group"
 # Run below command to make connection to cluster from desktop and synch-up credentials.
 echo "Downloading config and connecting to Cluster: ${AKS_CLUSTER} on resource group: $RESOURCE_GROUP_NAME"
-az aks get-credentials -g "$RESOURCE_GROUP_NAME" -n $AKS_CLUSTER
+az aks get-credentials -g "$RESOURCE_GROUP_NAME" -n $AKS_CLUSTER --overwrite-existing
 
 # Update image URI in kubernetes deployment manifest with ACR created above
 sed -i '' -e "s/mcr.microsoft.com\/azuredocs/${ACR_NAME}.azurecr.io/" ./azure-vote-all-in-one-redis.yaml
@@ -150,6 +150,7 @@ CLUSTER_PUBLIC_IP=$(kubectl get services -o=jsonpath='{.items[*].status.loadBala
 echo -e "\n Access application on: http://${CLUSTER_PUBLIC_IP}"
 
 # Create VM, install and configure Jenkins
+echo -e "\n Bootstrapping Jenkins VM...."
 bootstrap_jenkins_vm
 
 #TO CLEAN-UP - all resources created
