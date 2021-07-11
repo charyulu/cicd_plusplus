@@ -50,7 +50,7 @@ function bootstrap_jenkins_vm() {
         fi
         # Create a new virtual machine, this creates SSH keys if not present ans install Jenkins using VM init script
         # Reference: https://docs.microsoft.com/en-us/azure/developer/jenkins/configure-on-linux-vm
-        az vm create --resource-group "$RESOURCE_GROUP_NAME" --name $JENKINS_VM_NAME --admin-username $JENKINS_VM_ADMIN_USER --image UbuntuLTS --generate-ssh-keys --custom-data ./bootstrap_jenkins_vm.txt
+        az vm create --resource-group "$RESOURCE_GROUP_NAME" --name $JENKINS_VM_NAME --public-ip-sku Standard --admin-username $JENKINS_VM_ADMIN_USER --image UbuntuLTS --generate-ssh-keys --custom-data ./bootstrap_jenkins_vm.txt
         echo -e "\n Waiting on VM to start Jenkins...";sleep 30
 
         # Open port 80 to allow web traffic to host.
@@ -61,6 +61,7 @@ function bootstrap_jenkins_vm() {
 
         # Open port 8080 to allow web traffic to host.
         az vm open-port --port 8080 --resource-group "$RESOURCE_GROUP_NAME" --name $JENKINS_VM_NAME --priority 103
+        echo -e "\n Waiting after VM configuration...";sleep 30
 
         # Use CustomScript extension to install NGINX.
         # Reference: https://docs.microsoft.com/en-us/azure/virtual-machines/extensions/custom-script-linux
