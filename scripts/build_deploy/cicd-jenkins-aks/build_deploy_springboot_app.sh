@@ -51,9 +51,9 @@ function bootstrap_jenkins_vm() {
     fi
     # Create a new virtual machine, this creates SSH keys if not present ans install Jenkins using VM init script
     # Reference: https://docs.microsoft.com/en-us/azure/developer/jenkins/configure-on-linux-vm
-    az vm create --resource-group "$RESOURCE_GROUP_NAME" --name $JENKINS_VM_NAME --public-ip-sku Standard --admin-username $JENKINS_VM_ADMIN_USER --image UbuntuLTS --generate-ssh-keys --custom-data ./bootstrap_jenkins_vm.txt
-    echo -e "\n Waiting on VM to start Jenkins..."
-    sleep 30
+    #az vm create --resource-group "$RESOURCE_GROUP_NAME" --name $JENKINS_VM_NAME --public-ip-sku Standard --admin-username $JENKINS_VM_ADMIN_USER --image UbuntuLTS --generate-ssh-keys --custom-data ./bootstrap_jenkins_vm.txt
+    az vm create --resource-group "$RESOURCE_GROUP_NAME" --name $JENKINS_VM_NAME --public-ip-sku Standard --admin-username $JENKINS_VM_ADMIN_USER --image UbuntuLTS --generate-ssh-keys
+    echo -e "\n Waiting on VM to start Jenkins..."; sleep 30
 
     # Open port 80 to allow web traffic to host.
     az vm open-port --port 80 --resource-group "$RESOURCE_GROUP_NAME" --name $JENKINS_VM_NAME --priority 101
@@ -63,12 +63,13 @@ function bootstrap_jenkins_vm() {
 
     # Open port 8080 to allow web traffic to host.
     az vm open-port --port 8080 --resource-group "$RESOURCE_GROUP_NAME" --name $JENKINS_VM_NAME --priority 103
-    echo -e "\n Waiting after VM configuration..."
-    sleep 30
+    #echo -e "\n Waiting after VM configuration..."; sleep 240
 
-    # Use CustomScript extension to install NGINX.
+    # Use CustomScript extension to install tool set (jenkins, JDK, Docker, Azure CLI, Kubectl).
+    #  BOTE: This method requires the script file in the github to be Public. I do not want it to be public. So, disabled this option.  So, tool set is being deployed by az vm create command with --custom-data option above.
     # Reference: https://docs.microsoft.com/en-us/azure/virtual-machines/extensions/custom-script-linux
-    #az vm extension set --publisher Microsoft.Azure.Extensions --version 2.0 --name CustomScript --vm-name $JENKINS_VM_NAME --resource-group $RESOURCE_GROUP_NAME --settings '{"fileUris": ["https://raw.githubusercontent.com/charyulu/cicd_plusplus/main/scripts/build_deploy/cicd-jenkins-aks/config-jenkins.sh"],"commandToExecute": "./config-jenkins.sh"}'
+    az vm extension set --publisher Microsoft.Azure.Extensions --version 2.0 --name CustomScript --vm-name $JENKINS_VM_NAME --resource-group "$RESOURCE_GROUP_NAME" --settings '{"fileUris": ["https://raw.githubusercontent.com/charyulu/cicd_plusplus/main/scripts/build_deploy/cicd-jenkins-aks/config-jenkins.sh"],"commandToExecute": "./config-jenkins.sh"}'
+    echo -e "\n Waiting after VM configuration..."; sleep 240
 
     # Get public IP
     JENKINS_VM_PUBLIC_IP=$(az vm list-ip-addresses --resource-group "$RESOURCE_GROUP_NAME" --name $JENKINS_VM_NAME --query [0].virtualMachine.network.publicIpAddresses[0].ipAddress -o tsv)
@@ -90,7 +91,8 @@ function setup_aks_application() {
     # Fork the project https://github.com/Azure-Samples/azure-voting-app-redis into personal github account
     rm -rf azure-voting-app-redis
     git clone git@github.com:charyulu/azure-voting-app-redis.git
-    cd azure-voting-app-redis || exit
+    # shellcheck disable=SC2164
+    cd azure-voting-app-redis
     # Download, create and start Docker images of application Front end and backend
     docker-compose up -d
     az account set --subscription "$SUBSCRIPTION_ID"

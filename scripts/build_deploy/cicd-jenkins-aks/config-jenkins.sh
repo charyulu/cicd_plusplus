@@ -22,6 +22,7 @@ sudo apt-get install docker-ce -y
 curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
 
 # Kubectl
+# shellcheck disable=SC2164
 cd /tmp/
 sudo curl -kLO https://storage.googleapis.com/kubernetes-release/release/v1.8.0/bin/linux/amd64/kubectl
 sudo chmod +x ./kubectl
