@@ -72,7 +72,7 @@ function bootstrap_jenkins_vm() {
     #echo -e "\n Waiting after VM configuration..."; sleep 240
 
     # Open port 80 to allow web traffic to host.
-    az vm open-port --port 80 --resource-group "$RESOURCE_GROUP_NAME" --name $JENKINS_VM_NAME --priority 101
+    az vm open-port --port 80 --resource-group "$RESOURCE_GROUP_NAME" --name $JENKINS_VM_NAME --priority 1020
 
     # Open port 22 to allow ssh traffic to host.
     az vm open-port --port 22 --resource-group "$RESOURCE_GROUP_NAME" --name $JENKINS_VM_NAME --priority 102
