@@ -24,7 +24,9 @@ function define_vars() {
     export IMAGE_NAME="azure-vote-front"
     export POD_NAME="${IMAGE_NAME}"
     export JENKINS_VM_NAME="cicd-jenk-vm"
+    export JENKINS_PUBLIC_IP_RESOURCE_NAME="${JENKINS_VM_NAME}PublicIP"
     export JENKINS_VM_ADMIN_USER="charyulu" # NOTE: Add same value in
+    export JENKINS_PUB_IP_DNS_PREFIX="jenkins-${JENKINS_VM_ADMIN_USER}"
     # Give absolute path to .kube/config
     export KUBE_CONFIG_FILE="/Users/sudarsanam/.kube/config"
     # Login to Azure and capture ID of the required subscription account
@@ -76,6 +78,10 @@ function bootstrap_jenkins_vm() {
     # Get public IP
     JENKINS_VM_PUBLIC_IP=$(az vm list-ip-addresses --resource-group "$RESOURCE_GROUP_NAME" --name $JENKINS_VM_NAME --query [0].virtualMachine.network.publicIpAddresses[0].ipAddress -o tsv)
     echo -e "\n JENKINS_VM_PUBLIC_IP = $JENKINS_VM_PUBLIC_IP"
+    # Add prefix to Gitlab Public IP DNS name.
+    echo -e "Here are the DNS and Public IP details: \n"
+    az network public-ip update -g "${RESOURCE_GROUP_NAME}" -n ${JENKINS_PUBLIC_IP_RESOURCE_NAME} --dns-name ${JENKINS_PUB_IP_DNS_PREFIX} --allocation-method Static | jq -r '[.dnsSettings, .ipAddress]'
+
     # Copy Kube config file to Jenkins
     ssh -o "StrictHostKeyChecking no" $JENKINS_VM_ADMIN_USER@"$JENKINS_VM_PUBLIC_IP" sudo chmod 777 /var/lib/jenkins
     yes | scp $KUBE_CONFIG_FILE $JENKINS_VM_ADMIN_USER@"$JENKINS_VM_PUBLIC_IP":/var/lib/jenkins/config
@@ -146,37 +152,47 @@ function setup_aks_application() {
     sed -i '' -e "s/mcr.microsoft.com\/azuredocs/${ACR_NAME}.azurecr.io/" ./azure-vote-all-in-one-redis.yaml
     # Option - 1: Deploy application on AKS - In declarative mode - Using manifests
     kubectl apply -f ./azure-vote-all-in-one-redis.yaml
-    kubectl get service azure-vote-front --watch
+    echo -e "\n Waiting for POD to come up...";sleep 60
+    kubectl get service azure-vote-front
 
     # Option -2: Deploy application on AKS -  In Imperfative mode - Using "kubectl run"
     #kubectl run ${POD_NAME} --image=${ACR_NAME}.azurecr.io/${IMAGE_NAME}:latest
     #Expose the application (container) externally
     #kubectl expose pod ${POD_NAME} --type=LoadBalancer --port=80 --target-port=8080
+    #echo -e "\n Waiting for POD to come up..."
+    #sleep 30
     # Get the External IP of the cluster:
-    echo -e "\n Waiting for POD to come up..."
-    sleep 30
     CLUSTER_PUBLIC_IP=$(kubectl get services -o=jsonpath='{.items[*].status.loadBalancer.ingress[0].ip}')
-    echo -e "\n Access application on: http://${CLUSTER_PUBLIC_IP}"
+    echo -e "\n CLUSTER_PUBLIC_IP = $CLUSTER_PUBLIC_IP \nAccess application on: http://${CLUSTER_PUBLIC_IP}"
 
 }
-case "$1" in 
-    "aks")
-        # Set up the cluster and application
-        echo -e "\n Setting up the cluster and application...."
-        define_vars
-        setup_aks_application
-        ;;
-    "jenkins")
-        # Create VM, install and configure Jenkins
-        echo -e "\n Bootstrapping Jenkins VM...."
-        define_vars
-        bootstrap_jenkins_vm
-        ;;
-    *)
-        echo -e "\n Usage: ./build_deploy_springboot_app.sh <aks | jenkins>"
-    ;;
-esac
-#TO CLEAN-UP - all resources created
+
+# Use below case statement to deploy tools individually.
+#case "$1" in 
+#    "aks")
+#        # Set up the cluster and application
+#        echo -e "\n Setting up the cluster and application...."
+#        define_vars
+#        setup_aks_application
+#        ;;
+#    "jenkins")
+#        # Create VM, install and configure Jenkins
+#        echo -e "\n Bootstrapping Jenkins VM...."
+#        define_vars
+#        bootstrap_jenkins_vm
+#        ;;
+#    *)
+#        echo -e "\n Usage: ./build_deploy_springboot_app.sh <aks | jenkins>"
+#    ;;
+#esac
+
+echo -e "\n Setting up cluster and application...."
+define_vars
+setup_aks_application
+echo -e "\n Bootstrapping Jenkins VM...."
+bootstrap_jenkins_vm
+
+#CLEAN-UP - all resources created
 #NODE_RG=$(az aks show --name $AKS_CLUSTER --resource-group $RESOURCE_GROUP_NAME | jq -r '.nodeResourceGroup')
 #echo "Deleting resource group $NODE_RG"
 #az group delete -n $RESOURCE_GROUP_NAME --no-wait -y
