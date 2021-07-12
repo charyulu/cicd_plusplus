@@ -33,6 +33,18 @@ function define_vars() {
     SUBSCRIPTION_ID=$(az login | jq -r --arg SUBNAME "$SUBSCRIPTION_NAME" '.[] | select( .name == $SUBNAME) | .id')
     export SUBSCRIPTION_ID
 }
+# Check if resource group existing. If not, create a new resource group.
+check_and_create_resource_group () {
+
+    QUERY_OUTPUT=$(az group show -n "$RESOURCE_GROUP_NAME" --subscription $SUBSCRIPTION_NAME --query name -o tsv)
+    if [[ "$QUERY_OUTPUT" != "$RESOURCE_GROUP_NAME" ]]; then
+        echo "Resource Group: $RESOURCE_GROUP_NAME not found... Creating it"
+        az group create --name "$RESOURCE_GROUP_NAME" --location $AZURE_REGION
+    else
+        echo "Resource Group: $RESOURCE_GROUP_NAME already existing."
+    fi
+}
+
 # Prerequisites:
 # Azure container registry (ACR) credential helper. (https://github.com/Azure/acr-docker-credential-helper)
 # Azure CLI
@@ -44,13 +56,7 @@ function define_vars() {
 
 function bootstrap_jenkins_vm() {
     # Check & Create a resource group.
-    QUERY_OUTPUT=$(az group show -n "$RESOURCE_GROUP_NAME" --subscription $SUBSCRIPTION_NAME --query name -o tsv)
-    if [[ "$QUERY_OUTPUT" != "$RESOURCE_GROUP_NAME" ]]; then
-        echo "Resource Group: $RESOURCE_GROUP_NAME not found... Creating it"
-        az group create --name "$RESOURCE_GROUP_NAME" --location $AZURE_REGION
-    else
-        echo "Resource Group: $RESOURCE_GROUP_NAME already existing."
-    fi
+    check_and_create_resource_group
     # Create a new virtual machine, this creates SSH keys if not present ans install Jenkins using VM init script
     # Reference: https://docs.microsoft.com/en-us/azure/developer/jenkins/configure-on-linux-vm
     az vm create --resource-group "$RESOURCE_GROUP_NAME" --name $JENKINS_VM_NAME --public-ip-sku Standard --admin-username $JENKINS_VM_ADMIN_USER --image UbuntuLTS --generate-ssh-keys --custom-data ./bootstrap_jenkins_vm.txt
@@ -105,13 +111,7 @@ function setup_aks_application() {
     docker-compose up -d
     az account set --subscription "$SUBSCRIPTION_ID"
     # check & Create Resource group
-    QUERY_OUTPUT=$(az group show -n "$RESOURCE_GROUP_NAME" --subscription $SUBSCRIPTION_NAME --query name -o tsv)
-    if [[ "$QUERY_OUTPUT" != "$RESOURCE_GROUP_NAME" ]]; then
-        echo "Resource Group: $RESOURCE_GROUP_NAME not found... Creating it"
-        az group create --name "$RESOURCE_GROUP_NAME" --location $AZURE_REGION
-    else
-        echo "Resource Group: $RESOURCE_GROUP_NAME already existing."
-    fi
+    check_and_create_resource_group
     # Create private azure container registery
     az acr create --resource-group "$RESOURCE_GROUP_NAME" --location $AZURE_REGION \
         --name ${ACR_NAME} --sku Basic
@@ -182,11 +182,11 @@ case "$1" in
         ;;
     *)
         echo -e "\n No arguments passed. So, proceeding with full run...\n"
-        echo -e "\n Setting up cluster and application...."
         define_vars
-        setup_aks_application
         echo -e "\n Bootstrapping Jenkins VM...."
         bootstrap_jenkins_vm
+        echo -e "\n Setting up cluster and application...."
+        setup_aks_application
     ;;
 esac
 
