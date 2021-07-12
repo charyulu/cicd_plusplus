@@ -167,30 +167,29 @@ function setup_aks_application() {
 
 }
 
-# Use below case statement to deploy tools individually.
-#case "$1" in 
-#    "aks")
-#        # Set up the cluster and application
-#        echo -e "\n Setting up the cluster and application...."
-#        define_vars
-#        setup_aks_application
-#        ;;
-#    "jenkins")
-#        # Create VM, install and configure Jenkins
-#        echo -e "\n Bootstrapping Jenkins VM...."
-#        define_vars
-#        bootstrap_jenkins_vm
-#        ;;
-#    *)
-#        echo -e "\n Usage: ./build_deploy_springboot_app.sh <aks | jenkins>"
-#    ;;
-#esac
+case "$1" in 
+    "aks")
+        # Set up the cluster and application
+        echo -e "\n Setting up the cluster and application...."
+        define_vars
+        setup_aks_application
+        ;;
+    "jenkins")
+        # Create VM, install and configure Jenkins
+        echo -e "\n Bootstrapping Jenkins VM...."
+        define_vars
+        bootstrap_jenkins_vm
+        ;;
+    *)
+        echo -e "\n No arguments passed. So, proceeding with full run...\n"
+        echo -e "\n Setting up cluster and application...."
+        define_vars
+        setup_aks_application
+        echo -e "\n Bootstrapping Jenkins VM...."
+        bootstrap_jenkins_vm
+    ;;
+esac
 
-echo -e "\n Setting up cluster and application...."
-define_vars
-setup_aks_application
-echo -e "\n Bootstrapping Jenkins VM...."
-bootstrap_jenkins_vm
 
 #CLEAN-UP - all resources created
 #NODE_RG=$(az aks show --name $AKS_CLUSTER --resource-group $RESOURCE_GROUP_NAME | jq -r '.nodeResourceGroup')
