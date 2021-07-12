@@ -51,9 +51,17 @@ function bootstrap_jenkins_vm() {
     fi
     # Create a new virtual machine, this creates SSH keys if not present ans install Jenkins using VM init script
     # Reference: https://docs.microsoft.com/en-us/azure/developer/jenkins/configure-on-linux-vm
-    #az vm create --resource-group "$RESOURCE_GROUP_NAME" --name $JENKINS_VM_NAME --public-ip-sku Standard --admin-username $JENKINS_VM_ADMIN_USER --image UbuntuLTS --generate-ssh-keys --custom-data ./bootstrap_jenkins_vm.txt
-    az vm create --resource-group "$RESOURCE_GROUP_NAME" --name $JENKINS_VM_NAME --public-ip-sku Standard --admin-username $JENKINS_VM_ADMIN_USER --image UbuntuLTS --generate-ssh-keys
+    az vm create --resource-group "$RESOURCE_GROUP_NAME" --name $JENKINS_VM_NAME --public-ip-sku Standard --admin-username $JENKINS_VM_ADMIN_USER --image UbuntuLTS --generate-ssh-keys --custom-data ./bootstrap_jenkins_vm.txt
     echo -e "\n Waiting on VM to start Jenkins..."; sleep 30
+
+    # Use CustomScript extension to install toolset (jenkins, JDK, Docker, Azure CLI, Kubectl).
+    #  IMPORTANT NOTE: 
+    #       1. This method requires the script file in the github to be Public. 
+    #       2. This option never worked successfully.
+    #       3. So, went ahead with above "az vm create" command with an additional option --custom-data.
+    # Reference: https://docs.microsoft.com/en-us/azure/virtual-machines/extensions/custom-script-linux
+    #az vm extension set --publisher Microsoft.Azure.Extensions --version 2.0 --name CustomScript --vm-name $JENKINS_VM_NAME --resource-group "$RESOURCE_GROUP_NAME" --settings '{"fileUris": ["https://raw.githubusercontent.com/charyulu/cicd_plusplus/main/scripts/build_deploy/cicd-jenkins-aks/config-jenkins.sh"],"commandToExecute": "./config-jenkins.sh"}'
+    #echo -e "\n Waiting after VM configuration..."; sleep 240
 
     # Open port 80 to allow web traffic to host.
     az vm open-port --port 80 --resource-group "$RESOURCE_GROUP_NAME" --name $JENKINS_VM_NAME --priority 101
@@ -63,12 +71,6 @@ function bootstrap_jenkins_vm() {
 
     # Open port 8080 to allow web traffic to host.
     az vm open-port --port 8080 --resource-group "$RESOURCE_GROUP_NAME" --name $JENKINS_VM_NAME --priority 103
-    #echo -e "\n Waiting after VM configuration..."; sleep 240
-
-    # Use CustomScript extension to install tool set (jenkins, JDK, Docker, Azure CLI, Kubectl).
-    #  BOTE: This method requires the script file in the github to be Public. I do not want it to be public. So, disabled this option.  So, tool set is being deployed by az vm create command with --custom-data option above.
-    # Reference: https://docs.microsoft.com/en-us/azure/virtual-machines/extensions/custom-script-linux
-    az vm extension set --publisher Microsoft.Azure.Extensions --version 2.0 --name CustomScript --vm-name $JENKINS_VM_NAME --resource-group "$RESOURCE_GROUP_NAME" --settings '{"fileUris": ["https://raw.githubusercontent.com/charyulu/cicd_plusplus/main/scripts/build_deploy/cicd-jenkins-aks/config-jenkins.sh"],"commandToExecute": "./config-jenkins.sh"}'
     echo -e "\n Waiting after VM configuration..."; sleep 240
 
     # Get public IP
