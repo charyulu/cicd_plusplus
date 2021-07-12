@@ -37,6 +37,7 @@ sudo mv ./kubectl /usr/local/bin/kubectl
 echo "================== END - Setting Up Kubectl ================== "
 
 # Configure access
+echo -e "\n Waiting for System to  stabilize before making config changes......";sleep 240
 echo "================== START - Setting Up access config ================== "
 sudo usermod -aG docker jenkins
 sudo usermod -aG docker charyulu
