@@ -39,7 +39,7 @@ function define_vars() {
     \nAKS_DNS_NAME_PREFIX=$AKS_DNS_NAME_PREFIX\nAKS_NAMESPACE=$AKS_NAMESPACE\nAZURE_REGION=$AZURE_REGION \
     \nPROJ_BASE_DIR=$PROJ_BASE_DIR\nIMAGE_NAME=$IMAGE_NAME\nPOD_NAME=$POD_NAME\nJENKINS_VM_NAME=$JENKINS_VM_NAME \
     \nJENKINS_PUBLIC_IP_RESOURCE_NAME=$JENKINS_PUBLIC_IP_RESOURCE_NAME\nJENKINS_VM_ADMIN_USER=$JENKINS_VM_ADMIN_USER \
-    \nJENKINS_PUB_IP_DNS_PREFIX=$JENKINS_PUB_IP_DNS_PREFIX\nSUBSCRIPTION_ID=$SUBSCRIPTION_ID" > "run_context_$timestamp.log"
+    \nJENKINS_PUB_IP_DNS_PREFIX=$JENKINS_PUB_IP_DNS_PREFIX\nSUBSCRIPTION_ID=$SUBSCRIPTION_ID" > "run_notes_$timestamp.log"
 }
 # Check if resource group existing. If not, create a new resource group.
 check_and_create_resource_group () {
@@ -90,10 +90,10 @@ function bootstrap_jenkins_vm() {
 
     # Get public IP
     JENKINS_VM_PUBLIC_IP=$(az vm list-ip-addresses --resource-group "$RESOURCE_GROUP_NAME" --name $JENKINS_VM_NAME --query [0].virtualMachine.network.publicIpAddresses[0].ipAddress -o tsv)
-    echo -e "\n JENKINS_VM_PUBLIC_IP = $JENKINS_VM_PUBLIC_IP" | tee -a "run_context_$timestamp.log"
+    echo -e "\n JENKINS_VM_PUBLIC_IP = $JENKINS_VM_PUBLIC_IP" | tee -a "run_notes_$timestamp.log"
     # Add prefix to Gitlab Public IP DNS name.
     echo -e "Here are the DNS and Public IP details: \n"
-    az network public-ip update -g "${RESOURCE_GROUP_NAME}" -n ${JENKINS_PUBLIC_IP_RESOURCE_NAME} --dns-name ${JENKINS_PUB_IP_DNS_PREFIX} --allocation-method Static | jq -r '[.dnsSettings, .ipAddress]'  | tee -a "run_context_$timestamp.log"
+    az network public-ip update -g "${RESOURCE_GROUP_NAME}" -n ${JENKINS_PUBLIC_IP_RESOURCE_NAME} --dns-name ${JENKINS_PUB_IP_DNS_PREFIX} --allocation-method Static | jq -r '[.dnsSettings, .ipAddress]'  | tee -a "run_notes_$timestamp.log"
 
     # Copy Kube config file to Jenkins
     ssh -o "StrictHostKeyChecking no" $JENKINS_VM_ADMIN_USER@"$JENKINS_VM_PUBLIC_IP" sudo chmod 777 /var/lib/jenkins
@@ -102,7 +102,7 @@ function bootstrap_jenkins_vm() {
 
     # Get Jenkins Unlock Key
     JENKINS_URL="http://$JENKINS_VM_PUBLIC_IP:8080"
-    echo -e "Open Jenkins in browser at: $JENKINS_URL"  | tee -a "run_context_$timestamp.log"
+    echo -e "Open Jenkins in browser at: $JENKINS_URL"  | tee -a "run_notes_$timestamp.log"
     echo -e "Enter the following to Unlock Jenkins:"
     ssh -o "StrictHostKeyChecking no" $JENKINS_VM_ADMIN_USER@"$JENKINS_VM_PUBLIC_IP" sudo cat /var/lib/jenkins/secrets/initialAdminPassword
     echo -e "\n\n Take above said steps and press any key to continue..."
@@ -131,10 +131,6 @@ function deploy_app_local() {
         echo -e "\n kubectl is unavailable. Installing..."
         az aks install-cli
     fi
-    echo "The node resource group created by AKS is: $node_resource_group"
-    # Run below command to make connection to cluster from desktop and synch-up credentials.
-    echo "Downloading config and connecting to Cluster: ${AKS_CLUSTER} on resource group: $RESOURCE_GROUP_NAME"
-    az aks get-credentials -g "$RESOURCE_GROUP_NAME" -n $AKS_CLUSTER --overwrite-existing
 
     # Update image URI in kubernetes deployment manifest with ACR created above
     sed -i '' -e "s/mcr.microsoft.com\/azuredocs/${ACR_NAME}.azurecr.io/" ./azure-vote-all-in-one-redis.yaml
@@ -163,47 +159,58 @@ function config_jenkins() {
     az ad sp create-for-rbac --name commonServicePrincipal --skip-assignment | tee ./ad_service_principle_details.json
     # Get the ID of Azure container registry
     ACR_ID=$(az acr show --resource-group "$RESOURCE_GROUP_NAME" --name "${ACR_NAME}" --query "id" --output tsv)
-    echo -e "\nACR_ID=$ACR_ID" | tee -a "run_context_$timestamp.log"
+    echo -e "\nACR_ID=$ACR_ID" | tee -a "run_notes_$timestamp.log"
     # Create a role assignment to assign the service principal Contributor rights to the ACR registry.
     AD_SP_APPID=$(jq -r '.appId' ./ad_service_principle_details.json)
     # shellcheck disable=SC2034
     AD_SP_PASS=$(jq -r '.password' ./ad_service_principle_details.json)
     # shellcheck disable=SC2034
     AD_SP_TENANT=$(jq -r '.tenant' ./ad_service_principle_details.json)
-    echo -e "\nAD_SP_APPID=$AD_SP_APPID\nAD_SP_PASS=$AD_SP_PASS\nAD_SP_TENANT=$AD_SP_TENANT"  | tee -a "run_context_$timestamp.log"
+    echo -e "\nAD_SP_APPID=$AD_SP_APPID\nAD_SP_PASS=$AD_SP_PASS\nAD_SP_TENANT=$AD_SP_TENANT"  | tee -a "run_notes_$timestamp.log"
     #Reference: https://github.com/Azure/acr/blob/main/docs/roles-and-permissions.md
     #           https://docs.microsoft.com/en-us/cli/azure/role/assignment?view=azure-cli-latest
     # IMPORTANT NOTE: In actual project, Service Principal should never be created at resource group level, use --scope option instead to scope down the access.
     # Reference: https://docs.microsoft.com/en-us/cli/azure/role/assignment?view=azure-cli-latest#az_role_assignment_create 
     az role assignment create --assignee "$AD_SP_APPID" --role Contributor -g  "$RESOURCE_GROUP_NAME"
     # NOTES: With the role assignment created in Azure, now store ACR credentials in a Jenkins credential object. These credentials are referenced during the Jenkins build job.
-    echo -e "\n Follow the steps given at: https://docs.microsoft.com/en-us/azure/developer/jenkins/deploy-from-github-to-aks#create-a-credential-resource-in-jenkins-for-the-acr-service-principal"
+    echo -e "\n 
+    Follow the steps given at: https://docs.microsoft.com/en-us/azure/developer/jenkins/deploy-from-github-to-aks#create-a-credential-resource-in-jenkins-for-the-acr-service-principal
     # ============= Manual Steps in Jenkins UI: ==============
     # 1. Manage Jenkins/ Configure System/ Global properties/ Environment variables
     #       Add: ACR_LOGINSERVER=${ACR_NAME}.azurecr.io
+    #       Add: AKS_CLUSTER=${AKS_CLUSTER}
+    #       Add: AZ_TENANT=${AZ_TENANT}
+    #       Add: RESOURCE_GROUP_NAME=${RESOURCE_GROUP_NAME}
     # 2. Manage Jenkins > Manage Credentials > Jenkins Store > Global credentials (unrestricted) > Add Credentials
     #       Kind: Username with password
     #       Scope: Global
     #       Username: $AD_SP_APPID
     #       Password: $AD_SP_PASS
     #       ID: az_credentials
+    # 3. Dashboard/ New item
+    #       Item Name: azure-vote
+    #       Freestyle project
+    #       General tab/GitHub project - Provide Github project URL
+    #                   Source Code Management/ Git - Provide Git URL of the github Project
+    #                   Build Triggers/GitHub hook trigger for GITScm polling
+    #                   Build Environment/ Use secret text(s) or file(s)/ Bindings - Add AZ_USERNAME, AZ_PASSWORD
     # Add below Steps in Jenkins Build
-    echo -e "\n
     # Step -1: Build Image
-        # Build new image and push to ACR.
-        WEB_IMAGE_NAME=\"\${ACR_LOGINSERVER}/azure-vote-front:kube\${BUILD_NUMBER}\"
-        docker build -t \$WEB_IMAGE_NAME ./azure-vote
-        docker login \${ACR_LOGINSERVER} -u \${ACR_ID} -p \${ACR_PASSWORD}
-        docker push \$WEB_IMAGE_NAME
+# Build new image and push to ACR.
+WEB_IMAGE_NAME=\"\${ACR_LOGINSERVER}/azure-vote-front:kube\${BUILD_NUMBER}\"
+docker build -t \$WEB_IMAGE_NAME ./azure-vote
+docker login \${ACR_LOGINSERVER} -u \${ACR_ID} -p \${ACR_PASSWORD}
+docker push \$WEB_IMAGE_NAME
     # Step -2: Deploy Application
-        #Update kubernetes deployment with new image.
-        az login --service-principal --username \$AD_SP_APPID --password \$AD_SP_PASS --tenant \$AD_SP_TENANT
-        WEB_IMAGE_NAME=\"\${ACR_LOGINSERVER}\/azure-vote-front:kube\${BUILD_NUMBER}\"
-        sed -i \"s/mcr.microsoft.com\/azuredocs.*/\${WEB_IMAGE_NAME}/\" ./azure-vote-all-in-one-redis.yaml
-        kubectl apply --validate=false -f ./azure-vote-all-in-one-redis.yaml
-        echo -e \"Waiting for POD to come up...\";sleep 60
-        kubectl get service azure-vote-front
-    " | tee -a "run_context_$timestamp.log"
+#Update kubernetes deployment with new image.
+az login --service-principal --username \$AD_SP_APPID --password \$AD_SP_PASS --tenant \$AD_SP_TENANT
+az aks get-credentials -g \"\$RESOURCE_GROUP_NAME\" -n \$AKS_CLUSTER --overwrite-existing
+WEB_IMAGE_NAME=\"\${ACR_LOGINSERVER}\/azure-vote-front:kube\${BUILD_NUMBER}\"
+sed -i \"s/mcr.microsoft.com\/azuredocs.*/\${WEB_IMAGE_NAME}/\" ./azure-vote-all-in-one-redis.yaml
+kubectl apply --validate=false -f ./azure-vote-all-in-one-redis.yaml
+echo -e \"Waiting for POD to come up...\";sleep 60
+kubectl get service azure-vote-front
+    " | tee -a "run_notes_$timestamp.log"
 
 }
 function setup_aks() {
@@ -226,9 +233,13 @@ function setup_aks() {
         --attach-acr $ACR_NAME \
         --dns-name-prefix $AKS_DNS_NAME_PREFIX --generate-ssh-keys |
         jq -r '.nodeResourceGroup')
+    echo "The node resource group created by AKS is: $node_resource_group"
+    # Run below command to make connection to cluster from desktop and synch-up credentials.
+    echo "Downloading config and connecting to Cluster: ${AKS_CLUSTER} on resource group: $RESOURCE_GROUP_NAME"
+    az aks get-credentials -g "$RESOURCE_GROUP_NAME" -n $AKS_CLUSTER --overwrite-existing
     # Get the External IP of the cluster:
     CLUSTER_PUBLIC_IP=$(kubectl get services -o=jsonpath='{.items[*].status.loadBalancer.ingress[0].ip}')
-    echo -e "\n CLUSTER_PUBLIC_IP = $CLUSTER_PUBLIC_IP \nAccess application on: http://${CLUSTER_PUBLIC_IP}"  | tee -a "run_context_$timestamp.log"
+    echo -e "\n CLUSTER_PUBLIC_IP = $CLUSTER_PUBLIC_IP \nAccess application on: http://${CLUSTER_PUBLIC_IP}"  | tee -a "run_notes_$timestamp.log"
 
 }
 
