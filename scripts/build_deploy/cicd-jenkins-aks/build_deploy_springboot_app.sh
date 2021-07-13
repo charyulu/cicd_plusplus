@@ -189,6 +189,7 @@ function setup_aks_application() {
     # NOTES: With the role assignment created in Azure, now store ACR credentials in a Jenkins credential object. These credentials are referenced during the Jenkins build job.
     echo -e "\n Follow the steps given at: https://docs.microsoft.com/en-us/azure/developer/jenkins/deploy-from-github-to-aks#create-a-credential-resource-in-jenkins-for-the-acr-service-principal"
     # =========== Final working - Jenkins Build Steps ============
+    # Log the steps to output file for manual action.
     echo -e "\n
     # Step -1: Build Image
         # Build new image and push to ACR.
@@ -230,6 +231,11 @@ case "$1" in
     ;;
 esac
 
+# Setup automated az login using service principal
+# Reference: https://docs.microsoft.com/en-us/cli/azure/create-an-azure-service-principal-azure-cli?view=azure-cli-latest
+#az ad sp create-for-rbac --name az-login-sp
+#az role assignment create --assignee APP_ID --role Contributor
+#az login --service-principal --username APP_ID --password PASSWORD --tenant TENANT_ID
 
 #CLEAN-UP - all resources created
 #NODE_RG=$(az aks show --name $AKS_CLUSTER --resource-group $RESOURCE_GROUP_NAME | jq -r '.nodeResourceGroup')
