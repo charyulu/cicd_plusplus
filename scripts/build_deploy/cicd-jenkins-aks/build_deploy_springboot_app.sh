@@ -53,16 +53,15 @@ check_and_create_resource_group () {
     fi
 }
 
-# Prerequisites:
-# Azure container registry (ACR) credential helper. (https://github.com/Azure/acr-docker-credential-helper)
-# Azure CLI
-# Java 8/ 11
-# Maven, Git & docker
-
-# Function: Install and deploy Jenkins on VM
-# Reference: https://github.com/Azure-Samples/azure-voting-app-redis/tree/master/jenkins-tutorial
-
 function bootstrap_jenkins_vm() {
+    # Prerequisites:
+    # Azure container registry (ACR) credential helper. (https://github.com/Azure/acr-docker-credential-helper)
+    # Azure CLI
+    # Java 8/ 11
+    # Maven, Git & docker
+
+    # Function: Install and deploy Jenkins on VM
+    # Reference: https://github.com/Azure-Samples/azure-voting-app-redis/tree/master/jenkins-tutorial
     # Check & Create a resource group.
     check_and_create_resource_group
     # Create a new virtual machine, this creates SSH keys if not present ans install Jenkins using VM init script
@@ -109,7 +108,7 @@ function bootstrap_jenkins_vm() {
     echo -e "\n\n Take above said steps and press any key to continue..."
     read -r
 }
-function setup_aks_application() {
+function deploy_app_local() {
     # Fork the project https://github.com/Azure-Samples/azure-voting-app-redis into personal github account
     rm -rf azure-voting-app-redis
     git clone git@github.com:charyulu/azure-voting-app-redis.git
@@ -117,15 +116,6 @@ function setup_aks_application() {
     cd azure-voting-app-redis
     # Download, create and start Docker images of application Front end and backend
     docker-compose up -d
-    az account set --subscription "$SUBSCRIPTION_ID"
-    # check & Create Resource group
-    check_and_create_resource_group
-    # Create private azure container registery
-    az acr create --resource-group "$RESOURCE_GROUP_NAME" --location $AZURE_REGION \
-        --name ${ACR_NAME} --sku Basic
-    # set the default name for Azure Container Registry, otherwise you will need to specify the name in "az acr login"
-    # IMPORTANT NOTE: The credential created by "az acr login" is valid for 1 hour
-    #                 If encountered with 401 Unauthorized error anytime, run below commands again to reauthenticate.
     az config set defaults.acr=${ACR_NAME}
     az acr login
     # Tag the image with the ACR login server name and a version number of v1
@@ -133,16 +123,6 @@ function setup_aks_application() {
     # To cross check the success of above coomand, run: "docker images" - Image should be there with repository name prepended with ACR name
     # Push the image to ACR
     docker push ${ACR_NAME}.azurecr.io/azure-vote-front:v1
-    # Create AKS Cluster
-    echo "Creating AKS cluster: ${AKS_CLUSTER} on resource group: $RESOURCE_GROUP_NAME"
-    node_resource_group=$(az aks create \
-        --resource-group "$RESOURCE_GROUP_NAME" \
-        --name $AKS_CLUSTER \
-        --node-count $AKS_NODE_COUNT \
-        --node-vm-size $AKS_NODE_VM_SIZE \
-        --attach-acr $ACR_NAME \
-        --dns-name-prefix $AKS_DNS_NAME_PREFIX --generate-ssh-keys |
-        jq -r '.nodeResourceGroup')
     # Install Kubectl, if not available
     STATUS=0
     which -s kubectl
@@ -169,10 +149,8 @@ function setup_aks_application() {
     #kubectl expose pod ${POD_NAME} --type=LoadBalancer --port=80 --target-port=8080
     #echo -e "\n Waiting for POD to come up..."
     #sleep 30
-    # Get the External IP of the cluster:
-    CLUSTER_PUBLIC_IP=$(kubectl get services -o=jsonpath='{.items[*].status.loadBalancer.ingress[0].ip}')
-    echo -e "\n CLUSTER_PUBLIC_IP = $CLUSTER_PUBLIC_IP \nAccess application on: http://${CLUSTER_PUBLIC_IP}"  | tee -a "run_context_$timestamp.log"
-
+}
+function config_jenkins() {
     # Create Active directory service principals to give access to Azure resources.
     # Reference: https://docs.microsoft.com/en-us/azure/active-directory/develop/app-objects-and-service-principals
     #            https://docs.microsoft.com/en-us/cli/azure/ad/sp?view=azure-cli-latest#az_ad_sp_create_for_rbac
@@ -200,8 +178,16 @@ function setup_aks_application() {
     az role assignment create --assignee "$AD_SP_APPID" --role Contributor -g  "$RESOURCE_GROUP_NAME"
     # NOTES: With the role assignment created in Azure, now store ACR credentials in a Jenkins credential object. These credentials are referenced during the Jenkins build job.
     echo -e "\n Follow the steps given at: https://docs.microsoft.com/en-us/azure/developer/jenkins/deploy-from-github-to-aks#create-a-credential-resource-in-jenkins-for-the-acr-service-principal"
-    # =========== Final working - Jenkins Build Steps ============
-    # Log the steps to output file for manual action.
+    # ============= Manual Steps in Jenkins UI: ==============
+    # 1. Manage Jenkins/ Configure System/ Global properties/ Environment variables
+    #       Add: ACR_LOGINSERVER=${ACR_NAME}.azurecr.io
+    # 2. Manage Jenkins > Manage Credentials > Jenkins Store > Global credentials (unrestricted) > Add Credentials
+    #       Kind: Username with password
+    #       Scope: Global
+    #       Username: $AD_SP_APPID
+    #       Password: $AD_SP_PASS
+    #       ID: az_credentials
+    # Add below Steps in Jenkins Build
     echo -e "\n
     # Step -1: Build Image
         # Build new image and push to ACR.
@@ -220,13 +206,38 @@ function setup_aks_application() {
     " | tee -a "run_context_$timestamp.log"
 
 }
+function setup_aks() {
+    az account set --subscription "$SUBSCRIPTION_ID"
+    # check & Create Resource group
+    check_and_create_resource_group
+    # Create private azure container registery
+    az acr create --resource-group "$RESOURCE_GROUP_NAME" --location $AZURE_REGION \
+        --name ${ACR_NAME} --sku Basic
+    # set the default name for Azure Container Registry, otherwise you will need to specify the name in "az acr login"
+    # IMPORTANT NOTE: The credential created by "az acr login" is valid for 1 hour
+    #                 If encountered with 401 Unauthorized error anytime, run below commands again to reauthenticate.
+    # Create AKS Cluster
+    echo "Creating AKS cluster: ${AKS_CLUSTER} on resource group: $RESOURCE_GROUP_NAME"
+    node_resource_group=$(az aks create \
+        --resource-group "$RESOURCE_GROUP_NAME" \
+        --name $AKS_CLUSTER \
+        --node-count $AKS_NODE_COUNT \
+        --node-vm-size $AKS_NODE_VM_SIZE \
+        --attach-acr $ACR_NAME \
+        --dns-name-prefix $AKS_DNS_NAME_PREFIX --generate-ssh-keys |
+        jq -r '.nodeResourceGroup')
+    # Get the External IP of the cluster:
+    CLUSTER_PUBLIC_IP=$(kubectl get services -o=jsonpath='{.items[*].status.loadBalancer.ingress[0].ip}')
+    echo -e "\n CLUSTER_PUBLIC_IP = $CLUSTER_PUBLIC_IP \nAccess application on: http://${CLUSTER_PUBLIC_IP}"  | tee -a "run_context_$timestamp.log"
+
+}
 
 case "$1" in 
     "aks")
         # Set up the cluster and application
-        echo -e "\n Setting up the cluster and application...."
+        echo -e "\n Setting up AKS cluster...."
         define_vars
-        setup_aks_application
+        setup_aks
         ;;
     "jenkins")
         # Create VM, install and configure Jenkins
@@ -239,11 +250,17 @@ case "$1" in
         define_vars
         echo -e "\n Bootstrapping Jenkins VM...."
         bootstrap_jenkins_vm
-        echo -e "\n Setting up cluster and application...."
-        setup_aks_application
+        echo -e "\n Setting up AKS cluster...."
+        setup_aks
+        echo -e "\n Configuring Jenkins...."
+        config_jenkins
+        #echo -e "\n Setting up Application locally...."
+        #deploy_app_local
+
     ;;
 esac
 
+# Appendix:
 # Setup automated az login using service principal
 # Reference: https://docs.microsoft.com/en-us/cli/azure/create-an-azure-service-principal-azure-cli?view=azure-cli-latest
 #az ad sp create-for-rbac --name az-login-sp
