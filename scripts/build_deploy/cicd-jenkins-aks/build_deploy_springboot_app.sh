@@ -9,6 +9,7 @@
 # User settings
 function define_vars() {
     timestamp=$(date +"%m%d%Y%H%M")
+    export timestamp
     export SUBSCRIPTION_NAME="gopal-pay-as-you-go"
     export RESOURCE_GROUP_NAME="cicd-jenk-rg-$timestamp"
     export ACR_NAME="cicdjenkacr$RANDOM"
@@ -162,7 +163,7 @@ function setup_aks_application() {
     echo -e "\n Waiting for POD to come up...";sleep 60
     kubectl get service azure-vote-front
 
-    # Option -2: Deploy application on AKS -  In Imperfative mode - Using "kubectl run"
+    # Option -2: Deploy application on AKS -  In Imperative mode - Using "kubectl run"
     #kubectl run ${POD_NAME} --image=${ACR_NAME}.azurecr.io/${IMAGE_NAME}:latest
     #Expose the application (container) externally
     #kubectl expose pod ${POD_NAME} --type=LoadBalancer --port=80 --target-port=8080
@@ -171,21 +172,32 @@ function setup_aks_application() {
     # Get the External IP of the cluster:
     CLUSTER_PUBLIC_IP=$(kubectl get services -o=jsonpath='{.items[*].status.loadBalancer.ingress[0].ip}')
     echo -e "\n CLUSTER_PUBLIC_IP = $CLUSTER_PUBLIC_IP \nAccess application on: http://${CLUSTER_PUBLIC_IP}"  | tee -a "run_context_$timestamp.log"
-    # Create Active directory service principle
+
+    # Create Active directory service principals to give access to Azure resources.
     # Reference: https://docs.microsoft.com/en-us/azure/active-directory/develop/app-objects-and-service-principals
     #            https://docs.microsoft.com/en-us/cli/azure/ad/sp?view=azure-cli-latest#az_ad_sp_create_for_rbac
-    # Sample query of service principle appId : az ad sp list --all | jq -r '.[] | select( .displayName | contains("azure-cli")) | .appId'
-    # Reference to delete service principal: https://docs.microsoft.com/en-us/azure/active-directory/develop/howto-remove-app#remove-an-application-authored-by-you-or-your-organization
-    az ad sp create-for-rbac --skip-assignment | tee ./ad_service_principle_details.json
+    # Best practice:  
+    #       Always, Create service principals scoped to specific resource (such as Azure container registry (ACR), VM, etc.), rather than creating one with global access at Resource group level. 
+    # NOTES: 
+    #       1. In this PoC, one global SP (at resource group level) is being created. It is against the above mentioned best practice.
+    #       2. Sample query of service principle appId : az ad sp list --all | jq -r '.[] | select( .displayName | contains("azure-cli")) | .appId'
+    #       3. Reference to delete service principal: https://docs.microsoft.com/en-us/azure/active-directory/develop/howto-remove-app#remove-an-application-authored-by-you-or-your-organization
+    az ad sp create-for-rbac --name commonServicePrincipal --skip-assignment | tee ./ad_service_principle_details.json
     # Get the ID of Azure container registry
     ACR_ID=$(az acr show --resource-group "$RESOURCE_GROUP_NAME" --name "${ACR_NAME}" --query "id" --output tsv)
     echo -e "\nACR_ID=$ACR_ID" | tee -a "run_context_$timestamp.log"
     # Create a role assignment to assign the service principal Contributor rights to the ACR registry.
     AD_SP_APPID=$(jq -r '.appId' ./ad_service_principle_details.json)
-    echo -e "\nAD_SP_APPID=$AD_SP_APPID"  | tee -a "run_context_$timestamp.log"
+    # shellcheck disable=SC2034
+    AD_SP_PASS=$(jq -r '.password' ./ad_service_principle_details.json)
+    # shellcheck disable=SC2034
+    AD_SP_TENANT=$(jq -r '.tenant' ./ad_service_principle_details.json)
+    echo -e "\nAD_SP_APPID=$AD_SP_APPID\nAD_SP_PASS=$AD_SP_PASS\nAD_SP_TENANT=$AD_SP_TENANT"  | tee -a "run_context_$timestamp.log"
     #Reference: https://github.com/Azure/acr/blob/main/docs/roles-and-permissions.md
     #           https://docs.microsoft.com/en-us/cli/azure/role/assignment?view=azure-cli-latest
-    az role assignment create --assignee "$AD_SP_APPID" --role Contributor --scope "$ACR_ID"
+    # IMPORTANT NOTE: In actual project, Service Principal should never be created at resource group level, use --scope option instead to scope down the access.
+    # Reference: https://docs.microsoft.com/en-us/cli/azure/role/assignment?view=azure-cli-latest#az_role_assignment_create 
+    az role assignment create --assignee "$AD_SP_APPID" --role Contributor -g  "$RESOURCE_GROUP_NAME"
     # NOTES: With the role assignment created in Azure, now store ACR credentials in a Jenkins credential object. These credentials are referenced during the Jenkins build job.
     echo -e "\n Follow the steps given at: https://docs.microsoft.com/en-us/azure/developer/jenkins/deploy-from-github-to-aks#create-a-credential-resource-in-jenkins-for-the-acr-service-principal"
     # =========== Final working - Jenkins Build Steps ============
@@ -193,14 +205,15 @@ function setup_aks_application() {
     echo -e "\n
     # Step -1: Build Image
         # Build new image and push to ACR.
-        WEB_IMAGE_NAME=\"${ACR_LOGINSERVER}/azure-vote-front:kube${BUILD_NUMBER}\"
-        docker build -t $WEB_IMAGE_NAME ./azure-vote
-        docker login ${ACR_LOGINSERVER} -u ${ACR_ID} -p ${ACR_PASSWORD}
-        docker push $WEB_IMAGE_NAME
+        WEB_IMAGE_NAME=\"\${ACR_LOGINSERVER}/azure-vote-front:kube\${BUILD_NUMBER}\"
+        docker build -t \$WEB_IMAGE_NAME ./azure-vote
+        docker login \${ACR_LOGINSERVER} -u \${ACR_ID} -p \${ACR_PASSWORD}
+        docker push \$WEB_IMAGE_NAME
     # Step -2: Deploy Application
         #Update kubernetes deployment with new image.
-        WEB_IMAGE_NAME=\"${ACR_LOGINSERVER}\/azure-vote-front:kube${BUILD_NUMBER}\"
-        sed -i \"s/mcr.microsoft.com\/azuredocs.*/${WEB_IMAGE_NAME}/\" ./azure-vote-all-in-one-redis.yaml
+        az login --service-principal --username \$AD_SP_APPID --password \$AD_SP_PASS --tenant \$AD_SP_TENANT
+        WEB_IMAGE_NAME=\"\${ACR_LOGINSERVER}\/azure-vote-front:kube\${BUILD_NUMBER}\"
+        sed -i \"s/mcr.microsoft.com\/azuredocs.*/\${WEB_IMAGE_NAME}/\" ./azure-vote-all-in-one-redis.yaml
         kubectl apply --validate=false -f ./azure-vote-all-in-one-redis.yaml
         echo -e \"Waiting for POD to come up...\";sleep 60
         kubectl get service azure-vote-front
