@@ -66,7 +66,7 @@ function bootstrap_jenkins_vm() {
     check_and_create_resource_group
     # Create a new virtual machine, this creates SSH keys if not present ans install Jenkins using VM init script
     # Reference: https://docs.microsoft.com/en-us/azure/developer/jenkins/configure-on-linux-vm
-    az vm create --resource-group "$RESOURCE_GROUP_NAME" --name $JENKINS_VM_NAME --public-ip-sku Standard --admin-username $JENKINS_VM_ADMIN_USER --image UbuntuLTS --generate-ssh-keys --custom-data ./bootstrap_jenkins_vm.txt
+    az vm create --resource-group "$RESOURCE_GROUP_NAME" --name $JENKINS_VM_NAME --public-ip-sku Standard --admin-username $JENKINS_VM_ADMIN_USER --image UbuntuLTS --generate-ssh-keys --custom-data ./bootstrap_jenkins_vm.yaml
     echo -e "\n Waiting on VM to start Jenkins..."; sleep 30
 
     # Use CustomScript extension to install toolset (jenkins, JDK, Docker, Azure CLI, Kubectl).
