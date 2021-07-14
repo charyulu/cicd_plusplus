@@ -21,7 +21,7 @@ if [ "${KERNEL_NAME}" = "Darwin" ]; then
 else
   SCRIPT_PATH=$(dirname "$(readlink -f "$0")")
 fi
-
+# shellcheck disable=SC1091
 source "${SCRIPT_PATH}/common.sh"
 
 # Set default values
@@ -74,12 +74,12 @@ function do_up(){
   local public_ip_name="$8"
   local kubernetes_version=""
 
-  if [ $create_resource_group = true ]; then
+  if [ "$create_resource_group" = true ]; then
     echo "Creating Resource Group: $resource_group"
 
     az group create \
-      --name $resource_group \
-      --location $region
+      --name "$resource_group" \
+      --location "$region"
   fi
 
   echo "Creating $cluster_name cluster in resource group $resource_group"
@@ -88,20 +88,21 @@ function do_up(){
     kubernetes_version="--kubernetes-version $cluster_version"
   fi
 
-  local node_resource_group=$(az aks create \
-    --resource-group $resource_group \
-    --name $cluster_name \
-    --node-count $node_count \
-    --node-vm-size $node_vm_size \
-    $kubernetes_version --generate-ssh-keys | \
+  local node_resource_group
+  node_resource_group=$(az aks create \
+    --resource-group "$resource_group" \
+    --name "$cluster_name" \
+    --node-count "$node_count" \
+    --node-vm-size "$node_vm_size" \
+    "$kubernetes_version" --generate-ssh-keys | \
     jq -r '.nodeResourceGroup')
 
   if [ "$create_public_ip" = true ]; then
     echo "Creating a public IP called $public_ip_name in resource group $node_resource_group"
 
     az network public-ip create \
-      --resource-group $node_resource_group \
-      --name $public_ip_name \
+      --resource-group "$node_resource_group" \
+      --name "$public_ip_name" \
       --sku Standard \
       --allocation-method static
   fi
@@ -112,30 +113,31 @@ function do_down(){
   local resource_group=$2
   local cluster_name=$3
 
-  if [ $delete_resource_group = true ]; then
+  if [ "$delete_resource_group" = true ]; then
     echo "Deleting resource group $resource_group"
 
     az group delete \
-      -n $resource_group \
+      -n "$resource_group" \
       --no-wait
   else
     echo "Deleting $cluster_name cluster from resource group $resource_group"
 
     az aks delete \
-      --name $cluster_name \
-      --resource-group $resource_group \
+      --name "$cluster_name" \
+      --resource-group "$resource_group" \
       --no-wait
   fi
 
-  local node_resource_group=$(az aks show \
-    --name $cluster_name \
-    --resource-group $resource_group | \
+  local node_resource_group
+  node_resource_group=$(az aks show \
+    --name "$cluster_name" \
+    --resource-group "$resource_group" | \
     jq -r '.nodeResourceGroup')
 
   echo "Deleting cluster resource group $node_resource_group"
 
   az group delete \
-    -n $node_resource_group \
+    -n "$node_resource_group" \
     --no-wait \
     --yes
 }
@@ -146,14 +148,14 @@ function do_creds(){
   local kubctl_config_file=$3
 
   az aks get-credentials \
-    --resource-group $resource_group \
-    --name $cluster_name \
-    --file $kubctl_config_file
+    --resource-group "$resource_group" \
+    --name "$cluster_name" \
+    --file "$kubctl_config_file"
 }
 
 validate_tools az kubectl helm jq
 
-for arg in $@
+for arg in "$@"
 do
   case $arg in
     -g|--resource-group)

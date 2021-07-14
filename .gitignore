@@ -4,3 +4,4 @@ scripts/gitlab-azure-ARM-templates/
 scripts/.DS_Store
 .gitignore
 .DS_Store
+scripts/misc/GitLab_key.pem
