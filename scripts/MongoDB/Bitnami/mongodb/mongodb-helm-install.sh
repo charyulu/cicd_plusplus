@@ -1,4 +1,4 @@
-#/bin/sh
+#!/bin/bash
 #Reference: https://docs.gitlab.com/ee/install/azure/
 #   https://docs.bitnami.com/azure/get-started-charts-marketplace/
 #   https://bitnami.com/stack/mongodb/helm
@@ -19,15 +19,15 @@ MONGO_PUBLIC_IP_RESOURCE_NAME="mongodb-ip"
 SUBSCRIPTION_ID=$(az login | jq -r --arg SUBNAME "$SUBSCRIPTION_NAME" '.[] | select( .name == $SUBNAME) | .id')
 SUB_DOMAIN="${MONGO_PUB_IP_DNS_PREFIX}.${AZURE_REGION}"
 MONGO_DNS_NAME="${SUB_DOMAIN}.cloudapp.azure.com"
-az account set --subscription $SUBSCRIPTION_ID
-az configure --defaults group=$RESOURCE_GROUP_NAME
+az account set --subscription "$SUBSCRIPTION_ID"
+az configure --defaults group="$RESOURCE_GROUP_NAME"
 # Create Resource group
 echo "Creating resource group: $RESOURCE_GROUP_NAME"
-az group create -n $RESOURCE_GROUP_NAME -l $AZURE_REGION
+az group create -n "$RESOURCE_GROUP_NAME" -l $AZURE_REGION
 # Create AKS Cluster 
 echo "Creating AKS cluster: ${AKS_CLUSTER} on resource group: $RESOURCE_GROUP_NAME"
 node_resource_group=$(az aks create \
-    --resource-group $RESOURCE_GROUP_NAME \
+    --resource-group "$RESOURCE_GROUP_NAME" \
     --name $AKS_CLUSTER \
     --node-count $AKS_NODE_COUNT \
     --node-vm-size $AKS_NODE_VM_SIZE \
@@ -50,6 +50,7 @@ if [ $STATUS -eq 1 ];then
     if [ "${KERNEL_NAME}" = "Darwin" ]; then
         brew install helm
     else
+        # shellcheck disable=SC2164
         cd ~
         curl https://raw.githubusercontent.com/kubernetes/helm/master/scripts/get-helm-3 > get_helm.sh
         chmod 700 get_helm.sh
@@ -58,13 +59,14 @@ if [ $STATUS -eq 1 ];then
 fi
 # Run below command to make connection to cluster from desktop and synch-up credentials.
 echo "Connecting to Cluster: ${AKS_CLUSTER} on resource group: $RESOURCE_GROUP_NAME"
-az aks get-credentials -g $RESOURCE_GROUP_NAME -n $AKS_CLUSTER
+az aks get-credentials -g "$RESOURCE_GROUP_NAME" -n $AKS_CLUSTER
 # Deploy Mongo DB runner
 helm repo add azure-marketplace https://marketplace.azurecr.io/helm/v1/repo
 helm repo update
 helm install my-release azure-marketplace/mongodb
 # Get the Root Password
-export MONGODB_ROOT_PASSWORD=$(kubectl get secret --namespace default my-release-mongodb -o jsonpath="{.data.mongodb-root-password}" | base64 --decode)
+MONGODB_ROOT_PASSWORD=$(kubectl get secret --namespace default my-release-mongodb -o jsonpath="{.data.mongodb-root-password}" | base64 --decode)
+export MONGODB_ROOT_PASSWORD
 # Create a client container for Mongo DB
 kubectl run --namespace default my-release-mongodb-client --rm --tty -i --restart='Never' --env="MONGODB_ROOT_PASSWORD=$MONGODB_ROOT_PASSWORD" --image marketplace.azurecr.io/bitnami/mongodb:4.4.6-debian-10-r8 --command -- bash
 
