@@ -23,4 +23,8 @@ runcmd:
   - cp ~/.kube/config /var/lib/jenkins/.kube/
   - chmod 777 /var/lib/jenkins/
   - chmod 777 /var/lib/jenkins/config
+  - sudo apt-get install software-properties-common
+  - sudo apt-add-repository universe
+  - sudo apt-get update
+  - sudo apt-get install maven -y
 
