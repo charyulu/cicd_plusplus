@@ -1,0 +1,30 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentParameters.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "adminSSHKey": {
+            "value": null
+        },
+        "adminUsername": {
+            "value": "charyulu"
+        },
+        "tenantID": {
+            "value": "c42de015-c836-48d5-913e-65c663759182"
+        },
+        "clientID": {
+            "value": "359983de-69f7-4195-83bb-2afdee349f8c"
+        },
+        "clientSecret": {
+            "value": null
+        },
+        "pivnetAPIToken": {
+            "value": null
+        },
+        "location": {
+            "value": "westus"
+        },
+        "opsManPassword": {
+            "value": null
+        }
+    }
+}

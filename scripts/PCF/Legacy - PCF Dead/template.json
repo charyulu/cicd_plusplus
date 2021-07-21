@@ -1,0 +1,559 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "outputs": {
+        "OpsMan-FQDN": {
+            "type": "string",
+            "value": "[reference('opsman-ip').dnsSettings.fqdn]"
+        },
+        "Quotacheck": {
+            "type": "string",
+            "value": "[split(split(reference(resourceId('Microsoft.Compute/virtualMachines/extensions',variables('opsManVMName'),variables('extensionName'))).instanceView.statuses[0].message,'###QUOTACHECK###')[1],'---')[0]]"
+        },
+        "Username": {
+            "type": "string",
+            "value": "[parameters('adminUsername')]"
+        }
+    },
+    "parameters": {
+        "_artifactsLocation": {
+            "defaultValue": "[deployment().properties.templateLink.uri]",
+            "metadata": {
+                "description": "The base URI where artifacts required by this template are located including a trailing '/'"
+            },
+            "type": "string"
+        },
+        "_artifactsLocationSasToken": {
+            "defaultValue": "",
+            "metadata": {
+                "description": "The sasToken required to access _artifactsLocation.  When the template is deployed using the accompanying scripts, a sasToken will be automatically generated. Use the defaultValue if the staging location is not secured."
+            },
+            "type": "securestring"
+        },
+        "adminSSHKey": {
+            "metadata": {
+                "description": "Public SSH key to add to admin user."
+            },
+            "type": "securestring"
+        },
+        "adminUsername": {
+            "metadata": {
+                "description": "User name for the Virtual Machine."
+            },
+            "type": "string"
+        },
+        "clientID": {
+            "metadata": {
+                "description": "ID of the client. See https://github.com/cloudfoundry-incubator/bosh-azure-cpi-release/blob/master/docs/guidance.md"
+            },
+            "type": "string"
+        },
+        "clientSecret": {
+            "metadata": {
+                "description": "secret of the client. See https://github.com/cloudfoundry-incubator/bosh-azure-cpi-release/blob/master/docs/guidance.md"
+            },
+            "type": "securestring"
+        },
+        "location": {
+            "defaultValue": "[resourceGroup().location]",
+            "metadata": {
+                "description": "location where you want to deploy resources"
+            },
+            "type": "string"
+        },
+        "opsManPassword": {
+            "metadata": {
+                "description": "PCF Ops Manager admin password"
+            },
+            "type": "securestring"
+        },
+        "pivnetAPIToken": {
+            "defaultValue": "",
+            "metadata": {
+                "description": "API Token for Pivotal Network"
+            },
+            "type": "string"
+        },
+        "tenantID": {
+            "metadata": {
+                "description": "ID of the tenant. See https://github.com/cloudfoundry-incubator/bosh-azure-cpi-release/blob/master/docs/guidance.md"
+            },
+            "type": "string"
+        },
+        "vmSize": {
+            "defaultValue": "Standard_DS2_v2",
+            "metadata": {
+                "description": "Size of vm"
+            },
+            "type": "string"
+        }
+    },
+    "resources": [
+        {
+            "name": "pid-a85a0b5f-17fa-4f9d-be00-a9f20980d835-partnercenter",
+            "type": "Microsoft.Resources/deployments",
+            "apiVersion": "2020-10-01",
+            "properties": {
+                "mode": "Incremental",
+                "template": {
+                    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                    "contentVersion": "1.0.0.0",
+                    "resources": []
+                }
+            }
+        },
+        {
+            "apiVersion": "2018-07-01",
+            "kind": "Storage",
+            "location": "[variables('location')]",
+            "name": "[variables('boshStorageAccountName')]",
+            "resources": [
+                {
+                    "apiVersion": "2018-07-01",
+                    "dependsOn": [
+                        "[variables('boshStorageAccountName')]"
+                    ],
+                    "name": "default/bosh",
+                    "properties": {
+                        "publicAccess": "None"
+                    },
+                    "type": "blobServices/containers"
+                },
+                {
+                    "apiVersion": "2018-07-01",
+                    "dependsOn": [
+                        "[variables('boshStorageAccountName')]"
+                    ],
+                    "name": "default/stemcell",
+                    "properties": {
+                        "publicAccess": "Blob"
+                    },
+                    "type": "blobServices/containers"
+                }
+            ],
+            "sku": {
+                "name": "Standard_LRS"
+            },
+            "type": "Microsoft.Storage/storageAccounts"
+        },
+        {
+            "apiVersion": "2018-07-01",
+            "location": "[variables('location')]",
+            "name": "opsman-ip",
+            "properties": {
+                "dnsSettings": {
+                    "domainNameLabel": "[variables('opsManFQDNPrefix')]"
+                },
+                "publicIPAllocationMethod": "dynamic"
+            },
+            "type": "Microsoft.Network/publicIPAddresses"
+        },
+        {
+            "apiVersion": "2018-07-01",
+            "location": "[variables('location')]",
+            "name": "pcf-lb-ip",
+            "properties": {
+                "publicIPAllocationMethod": "static"
+            },
+            "sku": {
+                "name": "Standard"
+            },
+            "type": "Microsoft.Network/publicIPAddresses"
+        },
+        {
+            "apiVersion": "2018-07-01",
+            "location": "[variables('location')]",
+            "name": "[variables('subnet1NSG')]",
+            "properties": {
+                "securityRules": [
+                    {
+                        "name": "allow-ssh-to-opsman",
+                        "properties": {
+                            "access": "Allow",
+                            "description": "Allow Inbound SSH To Ops Manager",
+                            "destinationAddressPrefix": "[concat(variables('opsManPrivateIPAddress'), '/32')]",
+                            "destinationPortRange": "22",
+                            "direction": "Inbound",
+                            "priority": 1200,
+                            "protocol": "*",
+                            "sourceAddressPrefix": "*",
+                            "sourcePortRange": "*"
+                        }
+                    },
+                    {
+                        "name": "allow-http-to-opsman",
+                        "properties": {
+                            "access": "Allow",
+                            "description": "Allow Inbound HTTP To Ops Manager",
+                            "destinationAddressPrefix": "[concat(variables('opsManPrivateIPAddress'), '/32')]",
+                            "destinationPortRange": "80",
+                            "direction": "Inbound",
+                            "priority": 1300,
+                            "protocol": "*",
+                            "sourceAddressPrefix": "*",
+                            "sourcePortRange": "*"
+                        }
+                    },
+                    {
+                        "name": "allow-https-to-opsman",
+                        "properties": {
+                            "access": "Allow",
+                            "description": "Allow Inbound HTTPS To Ops Manager",
+                            "destinationAddressPrefix": "[concat(variables('opsManPrivateIPAddress'), '/32')]",
+                            "destinationPortRange": "443",
+                            "direction": "Inbound",
+                            "priority": 1400,
+                            "protocol": "*",
+                            "sourceAddressPrefix": "*",
+                            "sourcePortRange": "*"
+                        }
+                    },
+                    {
+                        "name": "allow-http",
+                        "properties": {
+                            "access": "Allow",
+                            "destinationAddressPrefix": "*",
+                            "destinationPortRange": "80",
+                            "direction": "Inbound",
+                            "priority": 1500,
+                            "protocol": "TCP",
+                            "sourceAddressPrefix": "*",
+                            "sourcePortRange": "*"
+                        }
+                    },
+                    {
+                        "name": "allow-https",
+                        "properties": {
+                            "access": "Allow",
+                            "destinationAddressPrefix": "*",
+                            "destinationPortRange": "443",
+                            "direction": "Inbound",
+                            "priority": 1600,
+                            "protocol": "TCP",
+                            "sourceAddressPrefix": "*",
+                            "sourcePortRange": "*"
+                        }
+                    },
+                    {
+                        "name": "allow-diego-ssh",
+                        "properties": {
+                            "access": "Allow",
+                            "destinationAddressPrefix": "*",
+                            "destinationPortRange": "2222",
+                            "direction": "Inbound",
+                            "priority": 1700,
+                            "protocol": "TCP",
+                            "sourceAddressPrefix": "*",
+                            "sourcePortRange": "*"
+                        }
+                    }
+                ]
+            },
+            "type": "Microsoft.Network/networkSecurityGroups"
+        },
+        {
+            "apiVersion": "2018-07-01",
+            "dependsOn": [
+                "[concat('Microsoft.Network/networkSecurityGroups/', variables('subnet1NSG'))]"
+            ],
+            "location": "[variables('location')]",
+            "name": "[variables('virtualNetworkName')]",
+            "properties": {
+                "addressSpace": {
+                    "addressPrefixes": [
+                        "[variables('addressPrefix')]"
+                    ]
+                },
+                "subnets": [
+                    {
+                        "name": "[variables('subnet1Name')]",
+                        "properties": {
+                            "addressPrefix": "[variables('subnet1Prefix')]",
+                            "networkSecurityGroup": {
+                                "id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('subnet1NSG'))]"
+                            }
+                        }
+                    }
+                ]
+            },
+            "type": "Microsoft.Network/virtualNetworks"
+        },
+        {
+            "apiVersion": "2018-07-01",
+            "dependsOn": [
+                "Microsoft.Network/publicIPAddresses/pcf-lb-ip"
+            ],
+            "location": "[parameters('location')]",
+            "name": "[variables('lbName')]",
+            "properties": {
+                "backendAddressPools": [
+                    {
+                        "name": "pcf-vms"
+                    }
+                ],
+                "frontendIPConfigurations": [
+                    {
+                        "name": "pcf-fe-ip",
+                        "properties": {
+                            "publicIPAddress": {
+                                "id": "[resourceId('Microsoft.Network/publicIPAddresses','pcf-lb-ip')]"
+                            }
+                        }
+                    }
+                ],
+                "loadBalancingRules": [
+                    {
+                        "name": "https",
+                        "properties": {
+                            "backendAddressPool": {
+                                "id": "[variables('lbPoolID')]"
+                            },
+                            "backendPort": 443,
+                            "enableFloatingIP": false,
+                            "frontendIPConfiguration": {
+                                "id": "[variables('frontEndIPConfigID')]"
+                            },
+                            "frontendPort": 443,
+                            "idleTimeoutInMinutes": 15,
+                            "probe": {
+                                "id": "[variables('lbProbeID')]"
+                            },
+                            "protocol": "tcp"
+                        }
+                    },
+                    {
+                        "name": "http",
+                        "properties": {
+                            "backendAddressPool": {
+                                "id": "[variables('lbPoolID')]"
+                            },
+                            "backendPort": 80,
+                            "enableFloatingIP": false,
+                            "frontendIPConfiguration": {
+                                "id": "[variables('frontEndIPConfigID')]"
+                            },
+                            "frontendPort": 80,
+                            "idleTimeoutInMinutes": 15,
+                            "probe": {
+                                "id": "[variables('lbProbeID')]"
+                            },
+                            "protocol": "tcp"
+                        }
+                    },
+                    {
+                        "name": "diego-ssh",
+                        "properties": {
+                            "backendAddressPool": {
+                                "id": "[variables('lbPoolID')]"
+                            },
+                            "backendPort": 2222,
+                            "enableFloatingIP": false,
+                            "frontendIPConfiguration": {
+                                "id": "[variables('frontEndIPConfigID')]"
+                            },
+                            "frontendPort": 2222,
+                            "idleTimeoutInMinutes": 4,
+                            "probe": {
+                                "id": "[variables('lbProbeID')]"
+                            },
+                            "protocol": "tcp"
+                        }
+                    }
+                ],
+                "probes": [
+                    {
+                        "name": "tcp80",
+                        "properties": {
+                            "intervalInSeconds": 5,
+                            "numberOfProbes": 2,
+                            "port": 80,
+                            "protocol": "tcp"
+                        }
+                    }
+                ]
+            },
+            "sku": {
+                "name": "Standard"
+            },
+            "type": "Microsoft.Network/loadBalancers"
+        },
+        {
+            "apiVersion": "2018-07-01",
+            "dependsOn": [
+                "[concat('Microsoft.Network/publicIPAddresses/', 'opsman-ip')]",
+                "[concat('Microsoft.Network/virtualNetworks/', variables('virtualNetworkName'))]"
+            ],
+            "location": "[variables('location')]",
+            "name": "[variables('opsManNicName')]",
+            "properties": {
+                "ipConfigurations": [
+                    {
+                        "name": "ipconfig1",
+                        "properties": {
+                            "privateIPAddress": "[variables('opsManPrivateIPAddress')]",
+                            "privateIPAllocationMethod": "Static",
+                            "publicIPAddress": {
+                                "id": "[resourceId('Microsoft.Network/publicIPAddresses','opsman-ip')]"
+                            },
+                            "subnet": {
+                                "id": "[variables('subnet1Ref')]"
+                            }
+                        }
+                    }
+                ]
+            },
+            "type": "Microsoft.Network/networkInterfaces"
+        },
+        {
+            "apiVersion": "2018-06-01-preview",
+            "location": "[parameters('location')]",
+            "name": "[variables('sqlServerName')]",
+            "properties": {
+                "administratorLogin": "[variables('sqlServerAdminLogin')]",
+                "administratorLoginPassword": "[variables('sqlServerAdminPassword')]",
+                "version": "12.0"
+            },
+            "resources": [
+                {
+                    "apiVersion": "2018-06-01-preview",
+                    "dependsOn": [
+                        "[concat('Microsoft.Sql/servers/', variables('sqlServerName'))]"
+                    ],
+                    "location": "[parameters('location')]",
+                    "name": "AllowAllWindowsAzureIps",
+                    "properties": {
+                        "endIpAddress": "0.0.0.0",
+                        "startIpAddress": "0.0.0.0"
+                    },
+                    "type": "firewallrules"
+                },
+                {
+                    "apiVersion": "2018-06-01-preview",
+                    "dependsOn": [
+                        "[variables('sqlServerName')]"
+                    ],
+                    "location": "[parameters('location')]",
+                    "name": "[variables('sqlDatabaseName')]",
+                    "tags": {
+                        "displayName": "SQL Database"
+                    },
+                    "type": "databases"
+                }
+            ],
+            "tags": {
+                "displayName": "SQL Server"
+            },
+            "type": "Microsoft.Sql/servers"
+        },
+        {
+            "apiVersion": "2018-06-01",
+            "dependsOn": [
+                "[concat('Microsoft.Compute/virtualMachines/', variables('opsManVMName'))]"
+            ],
+            "location": "[variables('location')]",
+            "name": "[concat(variables('opsManVMName'),'/initbootstrap')]",
+            "properties": {
+                "autoupgradeMinorVersion": false,
+                "protectedSettings": {
+                    "commandToExecute": "[concat('bash pioneer-bootstrap.sh ', parameters('adminUsername'), ' ', reference('opsman-ip').dnsSettings.fqdn)]",
+                    "fileUris": [
+                        "[uri(parameters('_artifactsLocation'), concat('scripts/pioneer-bootstrap.sh', parameters('_artifactsLocationSasToken')))]",
+                        "[uri(parameters('_artifactsLocation'), concat('scripts/pioneer', parameters('_artifactsLocationSasToken')))]"
+                    ]
+                },
+                "publisher": "Microsoft.Azure.Extensions",
+                "type": "CustomScript",
+                "typeHandlerVersion": "2.0"
+            },
+            "type": "Microsoft.Compute/virtualMachines/extensions"
+        },
+        {
+            "apiversion": "2018-06-01",
+            "dependsOn": [
+                "[concat('Microsoft.Storage/storageAccounts/',variables('boshStorageAccountName'))]",
+                "[concat('Microsoft.Network/networkInterfaces/',variables('opsManNicName'))]"
+            ],
+            "location": "[variables('location')]",
+            "name": "[variables('opsManVMName')]",
+            "plan": {
+                "name": "pivotal-ops-manager",
+                "product": "pivotal-ops-manager",
+                "publisher": "pivotal"
+            },
+            "properties": {
+                "hardwareProfile": {
+                    "vmSize": "[parameters('vmSize')]"
+                },
+                "networkProfile": {
+                    "networkInterfaces": [
+                        {
+                            "id": "[resourceId('Microsoft.Network/networkInterfaces',variables('opsManNicName'))]"
+                        }
+                    ]
+                },
+                "osProfile": {
+                    "adminUsername": "[parameters('adminUsername')]",
+                    "computerName": "[variables('opsManVMName')]",
+                    "customData": "[base64(concat('{', concat('client_id', ': \"', string(parameters('clientID')), '\"'), ', ', concat('client_secret', ': \"', string(parameters('clientSecret')), '\"'), ', ', concat('subscription_id', ': \"', string(subscription().subscriptionId), '\"'), ', ', concat('tenant_id', ': \"', string(parameters('tenantID')), '\"'), ', ', concat('resource_group_name', ': \"', string(resourceGroup().name), '\"'), ', ', concat('location', ': \"', string(parameters('location')), '\"'), ', ', concat('bosh_storage_account_name', ': \"', string(variables('boshStorageAccountName')), '\"'), ', ', concat('opsman_fqdn', ': \"', string(reference('opsman-ip').dnsSettings.fqdn), '\"'), ', ', concat('opsman_password', ': \"', string(parameters('opsManPassword')), '\"'), ', ', concat('pivnet_api_token', ': \"', string(parameters('pivnetAPIToken')), '\"'), ', ', concat('domain', ': \"', string(concat(reference('pcf-lb-ip').ipAddress, '.cf.pcfazure.com')), '\"'), ', ', concat('default_security_group', ': \"', string(variables('subnet1NSG')), '\"'), ', ', concat('lb_ip', ': \"', string(reference('pcf-lb-ip').ipAddress), '\"'), ', ', concat('web_lb_name', ': \"', string(variables('lbName')), '\"'), ', ', concat('sqlserver_admin_login', ': \"', string(variables('sqlServerAdminLogin')), '\"'), ', ', concat('sqlserver_admin_password', ': \"', string(variables('sqlServerAdminPassword')), '\"'), ', ', concat('sqlserver_dbname', ': \"', string(variables('sqlDatabaseName')), '\"'), ', ', concat('sqlserver_fqdn', ': \"', string(reference(concat('Microsoft.Sql/servers/', variables('sqlServerName'))).fullyQualifiedDomainName), '\"'), '}'))]",
+                    "linuxConfiguration": {
+                        "disablePasswordAuthentication": true,
+                        "provisionVMAgent": true,
+                        "ssh": {
+                            "publicKeys": [
+                                {
+                                    "keyData": "[parameters('adminSSHKey')]",
+                                    "path": "[variables('sshKeyPath')]"
+                                }
+                            ]
+                        }
+                    }
+                },
+                "storageProfile": {
+                    "imageReference": {
+                        "offer": "pivotal-ops-manager",
+                        "publisher": "pivotal",
+                        "sku": "pivotal-ops-manager",
+                        "version": "2.9.1"
+                    },
+                    "osDisk": {
+                        "caching": "ReadWrite",
+                        "createOption": "FromImage",
+                        "diskSizeGB": "120",
+                        "managedDisk": {
+                            "storageAccountType": "StandardSSD_LRS"
+                        },
+                        "name": "osdisk",
+                        "osType": "Linux"
+                    }
+                }
+            },
+            "type": "Microsoft.Compute/virtualMachines"
+        }
+    ],
+    "variables": {
+        "addressPrefix": "10.0.0.0/16",
+        "boshStorageAccountName": "[concat('bosh',uniquestring(resourceGroup().id, deployment().name))]",
+        "extensionName": "initbootstrap",
+        "frontEndIPConfigID": "[resourceId('Microsoft.Network/loadBalancers/frontendIPConfigurations', variables('lbName'), 'pcf-fe-ip')]",
+        "lbID": "[resourceId('Microsoft.Network/loadBalancers', variables('lbName'))]",
+        "lbName": "pcf-lb",
+        "lbPoolID": "[resourceId('Microsoft.Network/loadBalancers/backendAddressPools', variables('lbName'), 'pcf-vms')]",
+        "lbProbeID": "[resourceId('Microsoft.Network/loadBalancers/probes', variables('lbName'), 'tcp80')]",
+        "location": "[parameters('location')]",
+        "opsManFQDNPrefix": "[concat('pcf-opsman-',uniquestring(resourceGroup().id, deployment().name))]",
+        "opsManNicName": "[variables('opsManVMName')]",
+        "opsManPrivateIPAddress": "10.0.0.5",
+        "opsManVMName": "pcf-ops-man",
+        "sqlDatabaseName": "azuremetabroker",
+        "sqlServerAdminLogin": "sqladmin",
+        "sqlServerAdminPassword": "[concat('!A',parameters('clientSecret'),uniquestring(resourceGroup().id, deployment().name))]",
+        "sqlServerName": "[concat('sqlserver',uniquestring(resourceGroup().id, deployment().name))]",
+        "sshKeyPath": "[concat('/home/',parameters('adminUsername'),'/.ssh/authorized_keys')]",
+        "subnet1NSG": "opsmgr-nsg",
+        "subnet1Name": "pcf",
+        "subnet1Prefix": "10.0.0.0/24",
+        "subnet1Ref": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('virtualNetworkName'), variables('subnet1Name'))]",
+        "virtualNetworkName": "pcf-net",
+        "vnetID": "[resourceId('Microsoft.Network/virtualNetworks', variables('virtualNetworkName'))]"
+    }
+}
