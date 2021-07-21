@@ -33,9 +33,9 @@ brew install openssl
 brew install cloudfoundry/tap/cf-cli@7
 
 # Install cf-for-k8s 
-cd /Users/sudarsanam/Documents/prasad/cicd_plusplus/scripts/PCF/cf-for-k8s
+cd /Users/sudarsanam/Documents/prasad/cicd_plusplus/scripts/PCF/cf-for-k8s || exit
 git clone https://github.com/cloudfoundry/cf-for-k8s.git -b main
-cd cf-for-k8s
+cd cf-for-k8s || exit
 TMP_DIR=/Users/sudarsanam/Documents/prasad/tmp; mkdir -p ${TMP_DIR}
 
 # Create local kubernetes cluster
